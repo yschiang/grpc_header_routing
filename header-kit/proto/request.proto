@@ -1,0 +1,50 @@
+// =============================================================================
+// request.proto  (範本 / EXAMPLE)
+//
+// 給 sender 看的範本:示範如何在欄位上標 (routing.header) option。
+// Sender 可直接複製此結構改成自己的 message。
+//
+// 重要規則:
+//   1. metadata key 全小寫,由 group 固定決定(tool-header / lot-header / mask-header),
+//      sender 不需自己填 metadata key 名。
+//   2. (routing.header) 只標需要進 routing 的欄位;沒標的欄位只進 XML body。
+//   3. Cardinality 由 proto 結構天然表達:
+//        TOOL  → 放在頂層 message,輸出 1 筆(required)
+//        LOT   → repeated Lot,輸出 1..N 筆
+//        MASK  → repeated Mask,輸出 0..N 筆
+//      (mask 已確認可能多筆,故用 repeated。)
+//   4. 目前僅支援 scalar 欄位(string / int 等)進 header,不支援巢狀 message。
+// =============================================================================
+
+syntax = "proto3";
+
+package demo;
+
+import "header_options.proto";
+
+message Request {
+  // ---- TOOL group (required, 輸出 1 筆 tool-header) ----
+  string eqp_id     = 1 [(routing.header) = {group: TOOL, key: "EqpID",     order: 1}];
+  string chamber_id = 2 [(routing.header) = {group: TOOL, key: "ChamberId", order: 2}];
+
+  // ---- LOT group (1..N, 每個 element 輸出 1 筆 lot-header) ----
+  repeated Lot lots = 3;
+
+  // ---- MASK group (0..N, 每個 element 輸出 1 筆 mask-header) ----
+  repeated Mask masks = 4;
+
+  // ---- body-only 欄位 (不標 option → 只進 XML,不進 header) ----
+  string operator_id = 5;
+  int64  timestamp   = 6;
+}
+
+message Lot {
+  string lot_id = 1 [(routing.header) = {group: LOT, key: "LotId", order: 1}];
+  string step   = 2 [(routing.header) = {group: LOT, key: "Step",  order: 2}];
+  string recipe = 3 [(routing.header) = {group: LOT, key: "Recipe", order: 3}];
+}
+
+message Mask {
+  string mask_id  = 1 [(routing.header) = {group: MASK, key: "MaskId",  order: 1}];
+  string layer_id = 2 [(routing.header) = {group: MASK, key: "LayerId", order: 2}];
+}

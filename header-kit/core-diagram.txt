@@ -1,0 +1,48 @@
+# 來源:本檔為核心圖的單一來源;CONTEXT.md §8 為嵌入副本,修改請同步兩處。
+# ---------------------------------------------------------------------------
+
+                          gRPC Header Kit — 核心解法
+                   body = SSOT,header 從同一 message 衍生
+═══════════════════════════════════════════════════════════════════════════════
+
+  request.proto  (標註的來源 · SSOT)
+  ┌─────────────────────────────────────────────────────────┐
+  │ message Request {                                        │
+  │   string eqp_id     = 1 [(routing.header)={TOOL,EqpID}]; │──┐ 意圖綁在
+  │   string chamber_id = 2 [(routing.header)={TOOL,...}];   │──┤ 欄位旁
+  │                                                          │  │
+  │   repeated Lot  lots  = 3;   // → lot-header  1..N       │──┤
+  │   repeated Mask masks = 4;   // → mask-header 0..N       │──┤
+  │                                                          │  │
+  │   string operator_id = 5;    // 沒標 → 只進 body         │  │ (不進 header)
+  │ }                                                        │  │
+  └─────────────────────────────────────────────────────────┘  │
+                            │                                    │
+                            │  讀同一個 message 實例 (1 × msg)   │
+                            ▼                                    │
+                     ┌────────────┐                             │
+                     │  Request   │  ◀── annotation 在此被讀取 ──┘
+                     │  實例      │
+                     └─────┬──────┘
+                  ┌────────┴─────────┐
+                  │ 同一棵 tree 分岔 │
+            ──────┴──────      ──────┴──────────────────
+            ▼                  ▼
+   ┌──────────────────┐   ┌──────────────────────────────────────────┐
+   │ body · XML       │   │ gRPC metadata · header                   │
+   │ [SENDER 自理]    │   │ [本 KIT 交付]                            │
+   │ 不在 kit 範圍    │   │                                          │
+   ├──────────────────┤   ├──────────────────────────────────────────┤
+   │ <Request>        │   │ tool-header: EqpID=T01&ChamberId=C1       │
+   │   <EqpID>T01<..> │   │ lot-header:  LotId=L001&Step=ST10&...     │
+   │   <Lot ..>..<..> │   │ lot-header:  LotId=L002&Step=ST20         │
+   │   ... 完整資料   │   │ mask-header: MaskId=M99&LayerId=METAL1    │
+   │ </Request>       │   │                                          │
+   └──────────────────┘   │ URL-encoded · 同名 key 多筆 = repeated   │
+                          └──────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+ 為什麼不會漂移:
+   [01] 意圖綁在欄位上    映射放 proto option,不放外部檔 → 改欄位不會漏改
+   [02] 同一棵 message    body/header 讀同一實例 → header 是 body 的投影
+   [03] 編譯期擋漏改      plugin codegen:改 proto → 重 codegen → header 自動跟上

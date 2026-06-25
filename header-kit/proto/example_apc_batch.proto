@@ -1,0 +1,26 @@
+syntax = "proto3";
+package apc.v1;
+import "ctx_options.proto";
+
+message ControlItem {
+  string lot_id        = 1 [(routing.ctx) = {key: "lot_id"}];
+  string chamber_id    = 2 [(routing.ctx) = {key: "chamber_id"}];
+  string operation_id  = 3 [(routing.ctx) = {key: "operation_id"}];
+  string recipe_rev_id = 4 [(routing.ctx) = {key: "recipe_rev_id"}];
+}
+message ControlCalculateRequest {
+  // Layer 1 envelope
+  string request_id      = 1 [(routing.header) = {layer: ENVELOPE, key: "x-request-id", required: true}];
+  string correlation_id  = 2 [(routing.header) = {layer: ENVELOPE, key: "x-correlation-id", required: true}];
+  string contract_version= 3 [(routing.header) = {layer: ENVELOPE, key: "x-contract-version", required: true}];
+  string source_system   = 4 [(routing.header) = {layer: ENVELOPE, key: "x-source-system", required: true}];
+  string target_system   = 5 [(routing.header) = {layer: ENVELOPE, key: "x-target-system", required: true}];
+  string transaction_type= 6 [(routing.header) = {layer: ENVELOPE, key: "x-transaction-type", required: true}];
+  // Layer 2 routing
+  string site_id         = 7 [(routing.header) = {layer: ROUTING, key: "x-site-id", required: true}];
+  string tool_id         = 8 [(routing.header) = {layer: ROUTING, key: "x-tool-id", required: true}];
+  string route_profile   = 9 [(routing.header) = {layer: ROUTING, key: "x-route-profile", required: true}];
+  string routing_grain   =10 [(routing.header) = {layer: ROUTING, key: "x-routing-grain"}];
+  // Layer 3 repeated process context
+  repeated ControlItem items = 11;
+}

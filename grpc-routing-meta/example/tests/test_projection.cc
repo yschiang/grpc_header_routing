@@ -13,6 +13,7 @@
 #include "common/common_headers.h"
 #include "common/process_context_parser.h"
 #include "common/process_context_emit.h"
+#include "common/send.h"
 #include "common/sha256.h"
 #include "common/url_encode.h"
 #include "sys1.proj.h"
@@ -181,6 +182,17 @@ int main() {
     assert(of2);                                                  // count > 25
     assert(sink2.Get("x-process-context-overflow") == "true");
     assert(sink2.Count("x-process-context") == 0);
+  }
+
+  // --- Send<>() = FillCommon + ProjectMeta, one path, returns ProjResult (inv. 10) ---
+  {
+    auto req = sys1Req(2);
+    routingmeta::VectorSink sink;
+    routingmeta::ProjResult r = routingmeta::Send(req, Runtime{"CORR-S", "F18", "ETCH01"}, sink);
+    assert(r.ok);
+    assert(sink.Get("x-contract-version") == "v1");                // common headers present
+    assert(sink.Get("x-process-context-count") == "2");            // projection present
+    assert(r.duration.count() > 0);
   }
 
   std::printf("ALL TESTS PASSED\n");

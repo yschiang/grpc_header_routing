@@ -23,23 +23,23 @@
 
 #include "common/metadata_sink.h"
 #include "common/common_headers.h"   // [+meta] Runtime + FillCommon (the 6 common headers)
+#include "common/send.h"             // [+meta] kit Send -> ProjResult
 #include "sys1.proj.h"
 #include "sys2.proj.h"
 #include "sys3.proj.h"
 
-// [+meta] The one call your app makes. Works for any request type; ProjectMeta
-// resolves by Req. No system/method branching anywhere.
-template <class Req>
-void Send(const Req& req, const Runtime& rt, routingmeta::MetadataSink& sink) {
-  FillCommon(rt, sink);
-  ProjectMeta(req, sink);
-}
-
 // [demo] Only prints what got attached; not part of adoption.
-static void dump(const char* title, const routingmeta::VectorSink& s) {
-  std::printf("=== %s   (%zu bytes metadata) ===\n", title, s.bytes());
+static void dump(const char* title, const routingmeta::VectorSink& s,
+                 const routingmeta::ProjResult& r) {
+  const double us = r.duration.count() / 1000.0;
+  std::printf("=== %s   (%zu bytes metadata, ok=%s, %.2f us) ===\n",
+              title, s.bytes(), r.ok ? "true" : "false", us);
   for (const auto& kv : s.items)
     std::printf("  %-26s %s\n", (kv.first + ":").c_str(), kv.second.c_str());
+  for (const auto& is : r.issues)
+    std::printf("  [issue] %s%s\n",
+                is.kind == routingmeta::Issue::MissingRequired ? "missing-required " : "overflow ",
+                is.key.c_str());
   std::printf("\n");
 }
 
@@ -65,8 +65,8 @@ int main() {
     fillCtx(req.add_contexts(), "LOT01", "CH-A");  // [app] business data (the lots in this batch)
     fillCtx(req.add_contexts(), "LOT02", "CH-B");  // [app]
     routingmeta::VectorSink sink;                  // [+meta] in prod: routingmeta::GrpcSink sink(&ctx);
-    Send(req, rt, sink);                           // [+meta] the only added call
-    dump("sys1  Calculate (2 contexts)", sink);     // [demo]
+    routingmeta::ProjResult r = Send(req, rt, sink);  // [+meta] the only added call
+    dump("sys1  Calculate (2 contexts)", sink, r);     // [demo]
   }
 
   // --- sys2  sys2.recipe.verify — 1 sparse context (only RecipeID; rest empty) ---
@@ -74,16 +74,16 @@ int main() {
     sys2::v1::VerifyRequest req;                          // [app]
     req.add_contexts()->set_recipe_id("RCP_ETCH_V3");    // [app] business data
     routingmeta::VectorSink sink;                        // [+meta]
-    Send(req, Runtime{"CORR-LOT01-002", "F18", "ETCH01"}, sink);  // [+meta]
-    dump("sys2  Verify (1 sparse context)", sink);        // [demo]
+    routingmeta::ProjResult r = Send(req, Runtime{"CORR-LOT01-002", "F18", "ETCH01"}, sink);  // [+meta]
+    dump("sys2  Verify (1 sparse context)", sink, r);        // [demo]
   }
 
   // --- sys2  sys2.recipe.list — zero contexts (count=0) ---
   {
     sys2::v1::ListRequest req;                            // [app] (no contexts to send)
     routingmeta::VectorSink sink;                        // [+meta]
-    Send(req, Runtime{"CORR-LIST-003", "F18", "ETCH01"}, sink);   // [+meta]
-    dump("sys2  List (count=0)", sink);                   // [demo]
+    routingmeta::ProjResult r = Send(req, Runtime{"CORR-LIST-003", "F18", "ETCH01"}, sink);   // [+meta]
+    dump("sys2  List (count=0)", sink, r);                   // [demo]
   }
 
   // --- sys3  sys3.layout.submit — nested mask id (Submit05), no context ---
@@ -92,8 +92,17 @@ int main() {
     req.mutable_job()->mutable_mask()->set_mask_id("RET-9981");  // [app] business data (your mask id);
                                                             //       the x-mask-id HEADER is auto-projected by Send
     routingmeta::VectorSink sink;                          // [+meta]
-    Send(req, Runtime{"CORR-sys3-004", "F18", "LITHO01"}, sink);  // [+meta]
-    dump("sys3 Submit05 (nested mask id, no context)", sink);     // [demo]
+    routingmeta::ProjResult r = Send(req, Runtime{"CORR-sys3-004", "F18", "LITHO01"}, sink);  // [+meta]
+    dump("sys3 Submit05 (nested mask id, no context)", sink, r);     // [demo]
+  }
+
+  // --- sys3  empty mask id -> x-routing-error + duration (no throw) ---
+  {
+    sys3::v1::Submit05Request req;                          // [app] mask deliberately NOT set
+    routingmeta::VectorSink sink;                          // [+meta]
+    routingmeta::ProjResult r =
+        Send(req, Runtime{"CORR-sys3-005", "F18", "LITHO01"}, sink);  // [+meta]
+    dump("sys3 Submit05 (EMPTY mask -> x-routing-error)", sink, r);   // [demo] ok=false, issue, duration
   }
 
   // --- sys1 overflow — 60 contexts trip the 7 KB total guard ---
@@ -103,8 +112,8 @@ int main() {
     for (int i = 0; i < 60; ++i)                   // [app] business data (a big batch)
       fillCtx(req.add_contexts(), ("LOT" + std::to_string(i)).c_str(), "CH-A");
     routingmeta::VectorSink sink;                  // [+meta]
-    Send(req, rt, sink);                           // [+meta]
-    dump("sys1  Calculate (60 contexts -> overflow)", sink);       // [demo]
+    routingmeta::ProjResult r = Send(req, rt, sink);                           // [+meta]
+    dump("sys1  Calculate (60 contexts -> overflow)", sink, r);       // [demo]
   }
 
   std::printf("All 16 transaction types (sys1 x1, sys2 x5, sys3 x10) route through the same Send<>().\n");

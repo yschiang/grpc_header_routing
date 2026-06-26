@@ -42,6 +42,14 @@ and, if projecting the contexts would exceed **7 KB** (or `count > 25`, or a con
 still routes on the small common headers; the backend reads full detail from the
 body. Opaque transport failure → explicit, in-band signal.
 
+## Error model (report, don't dictate)
+
+`ProjectMeta`/`Send` return `ProjResult{ok, issues[], duration}` and never throw on a
+data condition. A missing **required** scalar (sys3 `x-mask-id`) sets `ok=false`, records
+a `MissingRequired` issue, and emits `x-routing-error: missing:x-mask-id` (the empty header
+is not sent). Overflow is a non-blocking issue (`ok` stays true). The caller inspects
+`issues` and decides; the kit logs nothing.
+
 ## Build & run
 
 ```sh
@@ -53,6 +61,7 @@ cmake -S . -B build && cmake --build build -j     # canonical, portable
 ./build/unified_sender     # prints the metadata each system attaches
 ./build/receiver_verify    # parses + verifies the digest (round-trip)
 ./build/test_projection    # or: ctest --test-dir build
+./build/bench_projection   # per-call duration for 1/2/25/60 contexts (sub-ms)
 ```
 
 Requires a C++17 compiler and Protobuf **with libprotoc**. gRPC is optional

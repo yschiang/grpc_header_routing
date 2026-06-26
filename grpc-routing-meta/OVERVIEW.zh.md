@@ -114,7 +114,7 @@ sys3 sys3.layout.submit ── domain scalar + 空骨架
 | 時機 | 擋什麼 | 怎麼擋 |
 |---|---|---|
 | **Build(codegen)** | annotation 寫錯:key 重複、`(routing.project)` 放在 repeated 底下 | `protoc --meta_out` **直接失敗、生不出來** |
-| **Run(sender)** | `required` 的 scalar 沒填 | `ProjectMeta` 當場 **throw**,不會送出空值 |
+| **Run(sender)** | `required` 的 scalar 沒填 | 回報 `ProjResult{ok=false, MissingRequired}` 並發 `x-routing-error: missing:<key>`(**不 throw**、不送空值);caller 依 `issues` 決定 |
 | **Run(sender)** | metadata 太大(>7 KB)會被 APISIX/HTTP2 默默截斷 | 改發**顯式** `x-process-context-overflow: true` |
 | **Receiver** | header / body 漂移 | 用 `x-process-context-digest` **重算比對**,不符即 reject |
 
@@ -154,7 +154,7 @@ digest 在 **sender 端**就算好、投影也在 sender 端產生 —— 任何
 ③ build + 驗證 ── 同一條 protoc 流水線
      • protoc --cpp_out(message class) + --meta_out(ProjectMeta) 一起跑
      • codegen 階段就驗 annotation(重複 key / project 放 repeated 底下 → 直接失敗)
-     • 跑 receiver / test:digest round-trip、required throw、size guard 綠燈才算過
+     • 跑 receiver / test:digest round-trip、required 缺值發 x-routing-error、size guard 綠燈才算過
           │  產出可連結的 lib
 ④ sender 套用 ── 每個用戶端
      • include 一支 header
@@ -180,7 +180,7 @@ build list 一行,plugin / sender / 合約全部不動。
 | **Effort 省力** | provider 一個 annotation、sender 兩行;新增系統 = 1 proto + build list 一行 | codegen 把「值埋在哪」自動化,不用每個系統手寫抽取 |
 | **治理 / 文件** | 不再「沒明確定義、沒文件、各 sender 各自猜」;標籤 + 合約就是唯一、可執行的定義 | annotation + 共用合約 = 單一 source of definition |
 | **時程** | sender 不用為每次改動重寫;改 proto 重 codegen 全員自動跟上,rollout 快 | codegen + 共用 lib |
-| **Error handling** | 三道關卡全在來源:build 擋 annotation 錯、sender `required` throw + 7KB overflow、receiver digest;**不會 silent failure** | codegen 驗證 + `ProjectMeta` throw + `EmitProcessContexts` + `VerifyDigest` |
+| **Error handling** | 三道關卡全在來源:build 擋 annotation 錯、sender `required` 缺值發 `x-routing-error` + 7KB overflow、receiver digest;**不會 silent failure** | codegen 驗證 + `ProjectMeta` 回報 `ProjResult`(`x-routing-error`)+ `EmitProcessContexts` + `VerifyDigest` |
 | **Quality / 一致性** | header 保證是 body 的投影、不漂移;跨語言可逐字節重現 | 單一 source of truth(body)+ canonical encoding + sha256 digest |
 | **不分歧** | 三系統共用同一份 schema;sender 一份程式碼、無 copy-paste bug | 共用 `process_context.proto` + 單一 `Send<>()` |
 | **好維護** | 政策(7KB / 25 / 512)集中一處;一支 plugin 管全部;proto 改了 codegen 自動跟上 | `process_context_emit.h` + 單一 plugin |

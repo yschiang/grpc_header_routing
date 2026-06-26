@@ -6,20 +6,31 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-PROTO_HOME=/Users/johnson.chiang/anaconda3
-PROTOC="$PROTO_HOME/bin/protoc"
-PB_INC="$PROTO_HOME/include"
-PB_LIB="$PROTO_HOME/lib"
+# Toolchain discovery — no hardcoded paths (criterion A). Override with env if needed:
+#   PROTOC=/path/to/protoc CXX=clang++ ./build.sh
+PROTOC="${PROTOC:-protoc}"
+command -v "$PROTOC" >/dev/null 2>&1 || { echo "error: protoc not found (set PROTOC=...)"; exit 1; }
+
+if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists protobuf; then
+  PB_INC="$(pkg-config --variable=includedir protobuf)"
+  PB_CFLAGS="$(pkg-config --cflags protobuf)"
+  PB_LIBS="$(pkg-config --libs protobuf)"
+else
+  # Derive <prefix> from <prefix>/bin/protoc (works for system, Homebrew, conda).
+  PREFIX="$(cd "$(dirname "$(command -v "$PROTOC")")/.." && pwd)"
+  PB_INC="$PREFIX/include"
+  PB_CFLAGS="-I$PB_INC"
+  PB_LIBS="-L$PREFIX/lib -Wl,-rpath,$PREFIX/lib -lprotobuf"
+fi
 
 CXX="${CXX:-c++}"
-CXXFLAGS="-std=c++17 -O2 -Wall"
+CXXFLAGS="${CXXFLAGS:--std=c++17 -O2 -Wall}"
 GEN="$ROOT/build/generated"
 BIN="$ROOT/build"
 
-# -I dirs must be a textual prefix of the file args below, so keep them relative
-# (we cd'd into $ROOT) to match "proto/x.proto". All protos live in proto/.
+# -I dirs must be a textual prefix of the file args below, so keep proto/ relative.
 IPROTO=(-I proto -I "$PB_INC")
-PBFLAGS=(-I "$GEN" -I "$ROOT/src" -I "$PB_INC" -L "$PB_LIB" -lprotobuf -Wl,-rpath,"$PB_LIB")
+PBFLAGS=(-I "$GEN" -I "$ROOT/src" $PB_CFLAGS $PB_LIBS)
 
 # Contract protos: --cpp_out only (no ProjectMeta). Add a new system by appending to
 # SYSTEMS; add a shared message by appending to CONTRACT.
@@ -40,8 +51,8 @@ done
 echo "[plug] protoc-gen-meta"
 $CXX $CXXFLAGS \
   src/plugin/protoc-gen-meta.cc "$GEN/metadata_options.pb.cc" \
-  -I "$GEN" -I "$PB_INC" \
-  -L "$PB_LIB" -lprotoc -lprotobuf -Wl,-rpath,"$PB_LIB" \
+  -I "$GEN" $PB_CFLAGS \
+  -lprotoc $PB_LIBS \
   -o "$BIN/protoc-gen-meta"
 
 # 2b. negative codegen: every fixture under tests/negative/ MUST be rejected by the

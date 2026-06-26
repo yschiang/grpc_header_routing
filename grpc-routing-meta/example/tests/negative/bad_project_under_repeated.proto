@@ -1,0 +1,14 @@
+// NEGATIVE fixture — codegen MUST reject this (see build.sh "[neg ]").
+// (routing.project) on a scalar reached UNDER a repeated message: walkProj skips the
+// repeated subtree, so the tag vanishes. NoProjectUnderRepeated must fail loud.
+syntax = "proto3";
+package neg.v1;
+import "metadata_options.proto";
+
+message Item {
+  string mask_id = 1 [(routing.project) = {key: "x-mask-id"}];
+}
+
+message BadProjectUnderRepeated {
+  repeated Item items = 1;
+}

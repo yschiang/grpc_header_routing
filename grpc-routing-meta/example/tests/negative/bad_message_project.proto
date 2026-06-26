@@ -1,0 +1,12 @@
+// NEGATIVE fixture — codegen MUST reject this (see build.sh "[neg ]").
+// (routing.project) on a MESSAGE-typed field: project targets leaf scalars only;
+// walkProj recurses past it without collecting the tag. Validate must fail loud.
+syntax = "proto3";
+package neg.v1;
+import "metadata_options.proto";
+
+message Inner { string value = 1; }
+
+message BadMessageProject {
+  Inner job = 1 [(routing.project) = {key: "x-mask-id"}];
+}

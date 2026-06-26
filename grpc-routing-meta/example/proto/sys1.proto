@@ -1,0 +1,22 @@
+// sys1 system — Advanced Process Control. 1 transaction.
+//
+// Projects the universal process-context: the batch of lots under control. The
+// number of contexts is dynamic (= body).
+syntax = "proto3";
+
+package sys1.v1;
+
+import "process_context.proto";
+
+// Adoption is small: your message and fields stay; the only metadata additions are
+// the `import` above and the one `repeated ProcessContext` field below.
+message CalculateRequest {
+  string tool_id = 1;                                 // [app]   your field (sender fills x-tool-id from it)
+  repeated common.v1.ProcessContext contexts = 2;     // [+meta] one added field; carries your lots,
+                                                       //         auto-projected to x-process-context
+}
+
+service Sys1Service {
+  // sys1.control.calculate
+  rpc Calculate(CalculateRequest) returns (common.v1.Ack);
+}

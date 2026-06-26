@@ -1,0 +1,10 @@
+// NEGATIVE fixture — codegen MUST reject this (see build.sh "[neg ]").
+// (routing.project) on a REPEATED scalar: a single-valued header can't hold N values,
+// and walkProj would silently skip it. Validate must fail loud instead.
+syntax = "proto3";
+package neg.v1;
+import "metadata_options.proto";
+
+message BadRepeatedScalar {
+  repeated string mask_id = 1 [(routing.project) = {key: "x-mask-id"}];
+}

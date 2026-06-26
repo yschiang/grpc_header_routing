@@ -13,6 +13,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # for clangd / IntelliSense
 find_package(Protobuf REQUIRED)
 message(STATUS "Protobuf: ${Protobuf_VERSION}")
 
+find_package(Threads REQUIRED)
+
 find_library(PROTOC_LIB NAMES protoc libprotoc
   HINTS ${Protobuf_LIBRARY_DIRS} /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib)
 if(NOT PROTOC_LIB)
@@ -93,7 +95,7 @@ target_link_libraries(receiver_verify PRIVATE routing_meta_gen)
 
 enable_testing()
 add_executable(test_projection tests/test_projection.cc)
-target_link_libraries(test_projection PRIVATE routing_meta_gen)
+target_link_libraries(test_projection PRIVATE routing_meta_gen Threads::Threads)
 add_test(NAME projection COMMAND test_projection)
 add_executable(bench_projection tests/bench_projection.cc)
 target_link_libraries(bench_projection PRIVATE routing_meta_gen)

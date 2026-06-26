@@ -88,7 +88,7 @@ $CXX $CXXFLAGS sender/unified_sender.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BI
 echo "[app ] receiver_verify"
 $CXX $CXXFLAGS receiver/receiver_verify.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BIN/receiver_verify"
 echo "[test] test_projection"
-$CXX $CXXFLAGS tests/test_projection.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BIN/test_projection"
+$CXX $CXXFLAGS -pthread tests/test_projection.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BIN/test_projection"
 echo "[bench] bench_projection"
 $CXX $CXXFLAGS tests/bench_projection.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BIN/bench_projection"
 

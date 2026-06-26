@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstdio>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "common/metadata_sink.h"
@@ -193,6 +194,28 @@ int main() {
     assert(sink.Get("x-contract-version") == "v1");                // common headers present
     assert(sink.Get("x-process-context-count") == "2");            // projection present
     assert(r.duration.count() > 0);
+  }
+
+  // --- thread-safety: projection is re-entrant (no shared state) [cheap P1] ---
+  {
+    auto req = sys1Req(2);
+    const int N = 8;
+    std::vector<std::thread> ts;
+    std::vector<std::string> digests(N);
+    std::vector<bool> oks(N, false);
+    for (int i = 0; i < N; ++i)
+      ts.emplace_back([&, i] {
+        routingmeta::VectorSink sink;
+        routingmeta::ProjResult r = routingmeta::ProjectMeta(req, sink);
+        oks[i] = r.ok;
+        digests[i] = sink.Get("x-process-context-digest");
+      });
+    for (auto& t : ts) t.join();
+    for (int i = 0; i < N; ++i) {
+      assert(oks[i]);
+      assert(!digests[i].empty());
+      assert(digests[i] == digests[0]);                          // deterministic across threads
+    }
   }
 
   std::printf("ALL TESTS PASSED\n");

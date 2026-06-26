@@ -5,11 +5,11 @@
 // =============================================================================
 #include <cassert>
 #include <cstdio>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "common/metadata_sink.h"
+#include "common/proj_result.h"
 #include "common/common_headers.h"
 #include "common/process_context_parser.h"
 #include "common/process_context_emit.h"
@@ -85,9 +85,11 @@ int main() {
   {
     auto req = sys1Req(30);
     routingmeta::VectorSink sink;
-    ProjectMeta(req, sink);
+    routingmeta::ProjResult r = ProjectMeta(req, sink);
+    assert(r.ok);                                                  // overflow is non-blocking
+    assert(r.issues.size() == 1 && r.issues[0].kind == routingmeta::Issue::Overflow);
     assert(sink.Get("x-process-context-count") == "30");
-    assert(sink.Get("x-process-context-format") == "urlencoded-query-string-v1");  // survives overflow (inv. 8)
+    assert(sink.Get("x-process-context-format") == "urlencoded-query-string-v1");
     assert(sink.Get("x-process-context-overflow") == "true");
     assert(sink.Count("x-process-context") == 0);
     assert(sink.Get("x-process-context-digest").empty());
@@ -104,24 +106,26 @@ int main() {
     assert(sink.Count("x-process-context") == 0);
   }
 
-  // --- sys3 scalar projection (nested) + required throw ---
+  // --- sys3 scalar projection (nested) + missing-required -> ProjResult, NO throw (inv. 9) ---
   {
     sys3::v1::Submit05Request req;
     req.mutable_job()->mutable_mask()->set_mask_id("RET-9981");
     routingmeta::VectorSink sink;
-    ProjectMeta(req, sink);
-    assert(sink.Get("x-mask-id") == "RET-9981");                    // reached via nested walk
-    assert(sink.Get("x-process-context-count") == "0");            // universal pctx skeleton, empty
+    routingmeta::ProjResult r = ProjectMeta(req, sink);
+    assert(r.ok);
+    assert(r.issues.empty());
+    assert(r.duration.count() > 0);                                // self-timed (criterion H)
+    assert(sink.Get("x-mask-id") == "RET-9981");                   // reached via nested walk
+    assert(sink.Get("x-process-context-count") == "0");
 
-    bool threw = false;
-    sys3::v1::Submit05Request empty;
-    try {
-      routingmeta::VectorSink s2;
-      ProjectMeta(empty, s2);
-    } catch (const std::exception&) {
-      threw = true;
-    }
-    assert(threw);                                                  // required mask id missing
+    sys3::v1::Submit05Request empty;                               // mask not set
+    routingmeta::VectorSink s2;
+    routingmeta::ProjResult r2 = ProjectMeta(empty, s2);           // MUST NOT throw
+    assert(!r2.ok);
+    assert(r2.issues.size() == 1 && r2.issues[0].kind == routingmeta::Issue::MissingRequired);
+    assert(r2.issues[0].key == "x-mask-id");
+    assert(s2.Get("x-routing-error") == "missing:x-mask-id");      // explicit, in-band
+    assert(s2.Get("x-mask-id").empty());                           // empty header NOT emitted
   }
 
   // --- empty fields project as `Key=` (present-but-empty); digest round-trips (inv. 1) ---

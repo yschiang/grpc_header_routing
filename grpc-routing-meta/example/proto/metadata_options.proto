@@ -1,0 +1,22 @@
+syntax = "proto3";
+package routing;
+import "google/protobuf/descriptor.proto";
+
+// Mark a body-derived scalar that must be projected to a single-valued header,
+// used for heterogeneous-source values (e.g. mask id buried at a per-tx nested path).
+// Do NOT use for sender-known values (tool id, recipe id, site) — those are filled
+// directly by the sender / interceptor and are not the kit's concern.
+message ProjectField {
+  string key = 1;        // header key, e.g. "x-mask-id"
+  bool required = 2;
+}
+
+// Mark a field inside the repeated process-context message.
+message CtxField {
+  string key = 1;        // query-string key, e.g. "ChamberId"
+}
+
+extend google.protobuf.FieldOptions {
+  ProjectField project = 50005;   // body-derived scalar -> single header
+  CtxField     pctx    = 50006;   // process-context query-string field
+}

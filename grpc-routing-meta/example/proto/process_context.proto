@@ -1,0 +1,32 @@
+// Shared routing contract: the process-context schema EVERY system projects.
+//
+// Owned by the platform / contract team and imported by sys1.proto / sys2.proto /
+// sys3.proto, so all systems agree on the exact fields, header keys, and canonical
+// encoding. Defining it once is what makes "process-context is universal" true —
+// if each system declared its own, the schemas would drift.
+//
+// Field keys follow the production floor. Canonical projection sorts by key:
+//   ChamberId < LotID < OperationNO < PartID < RecipeID < StageID < Tech
+syntax = "proto3";
+
+package common.v1;
+
+import "metadata_options.proto";
+
+// One process-execution context (lot + chamber + recipe + ...). A request carries
+// `repeated ProcessContext`; how many is dynamic (= whatever the body holds, 0..N).
+// An empty field projects as `Key=` — a faithful (present-but-empty) projection of
+// the body, so the header still cannot drift from the body.
+message ProcessContext {
+  string lot_id       = 1 [(routing.pctx) = {key: "LotID"}];
+  string recipe_id    = 2 [(routing.pctx) = {key: "RecipeID"}];
+  string tech         = 3 [(routing.pctx) = {key: "Tech"}];
+  string part_id      = 4 [(routing.pctx) = {key: "PartID"}];
+  string stage_id     = 5 [(routing.pctx) = {key: "StageID"}];
+  string operation_no = 6 [(routing.pctx) = {key: "OperationNO"}];
+  string chamber_id   = 7 [(routing.pctx) = {key: "ChamberId"}];
+}
+
+// Shared empty response for the demo service methods. The kit projects REQUEST
+// metadata only; responses are irrelevant to routing.
+message Ack {}

@@ -14,7 +14,7 @@
 #pragma once
 #include <string>
 
-namespace headergen {
+namespace routingmeta {
 
 inline std::string UrlEncode(const std::string& in) {
   static const char* kHex = "0123456789ABCDEF";
@@ -36,4 +36,4 @@ inline std::string UrlEncode(const std::string& in) {
   return out;
 }
 
-}  // namespace headergen
+}  // namespace routingmeta

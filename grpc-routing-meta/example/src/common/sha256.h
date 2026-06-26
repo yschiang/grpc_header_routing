@@ -2,7 +2,7 @@
 #include <string>
 #include <cstdint>
 #include <cstring>
-namespace headergen {
+namespace routingmeta {
 inline std::string Sha256Hex(const std::string& msg){
   auto rotr=[](uint32_t x,int n){return (x>>n)|(x<<(32-n));};
   static const uint32_t K[64]={

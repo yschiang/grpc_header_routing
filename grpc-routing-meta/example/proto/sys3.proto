@@ -1,0 +1,41 @@
+// sys3 system — reticle / mask domain. 10 transactions.
+//
+// Each method carries its mask id at a DIFFERENT body path (top-level / renamed /
+// nested / sub-message). All project to the same x-mask-id via one annotation; the
+// generated walkProj reaches wherever the id lives. Mask requests also carry the
+// universal process-context (usually empty -> count=0). This is the kit's headline:
+// heterogeneous body source, one annotation per tx, zero hand-written extraction.
+//
+// Adoption per message stays tiny: your mask-id field stays where it is — you only
+// [+meta] add one (routing.project) tag to it plus the shared `repeated
+// ProcessContext contexts` field. The two imports are the only other additions.
+syntax = "proto3";
+
+package sys3.v1;
+
+import "metadata_options.proto";   // mask applies (routing.project) directly -> needs the options
+import "process_context.proto";
+
+message Submit01Request { string mask_id = 1 [(routing.project)={key:"x-mask-id", required:true}]; repeated common.v1.ProcessContext contexts = 2; }                                                              // top-level
+message Submit02Request { string reticle_id = 1 [(routing.project)={key:"x-mask-id", required:true}]; repeated common.v1.ProcessContext contexts = 2; }                                                           // renamed
+message Submit03Request { message Mask { string id = 1 [(routing.project)={key:"x-mask-id", required:true}]; } Mask mask = 1; repeated common.v1.ProcessContext contexts = 2; }                                    // nested 1
+message Submit04Request { message Layer { string mask_no = 1 [(routing.project)={key:"x-mask-id", required:true}]; } Layer layer = 1; repeated common.v1.ProcessContext contexts = 2; }                            // nested 1, renamed
+message Submit05Request { message Mask { string mask_id = 1 [(routing.project)={key:"x-mask-id", required:true}]; } message Job { Mask mask = 1; } Job job = 1; repeated common.v1.ProcessContext contexts = 2; }  // nested 2
+message Submit06Request { message Hdr { string mask_id = 1 [(routing.project)={key:"x-mask-id", required:true}]; } Hdr request_header = 1; repeated common.v1.ProcessContext contexts = 2; }                        // sub-msg
+message Submit07Request { string photo_mask_id = 1 [(routing.project)={key:"x-mask-id", required:true}]; repeated common.v1.ProcessContext contexts = 2; }                                                         // renamed top-level
+message Submit08Request { message Ctx { string mask_ref = 1 [(routing.project)={key:"x-mask-id", required:true}]; } Ctx mask_block = 1; repeated common.v1.ProcessContext contexts = 2; }                           // nested
+message Submit09Request { string maskid = 1 [(routing.project)={key:"x-mask-id", required:true}]; repeated common.v1.ProcessContext contexts = 2; }                                                                // top-level
+message Submit10Request { message Mask { string id = 1 [(routing.project)={key:"x-mask-id", required:true}]; } message Exposure { Mask mask = 1; } Exposure exposure = 1; repeated common.v1.ProcessContext contexts = 2; } // nested 2
+
+service Sys3Service {
+  rpc Submit01(Submit01Request) returns (common.v1.Ack);
+  rpc Submit02(Submit02Request) returns (common.v1.Ack);
+  rpc Submit03(Submit03Request) returns (common.v1.Ack);
+  rpc Submit04(Submit04Request) returns (common.v1.Ack);
+  rpc Submit05(Submit05Request) returns (common.v1.Ack);
+  rpc Submit06(Submit06Request) returns (common.v1.Ack);
+  rpc Submit07(Submit07Request) returns (common.v1.Ack);
+  rpc Submit08(Submit08Request) returns (common.v1.Ack);
+  rpc Submit09(Submit09Request) returns (common.v1.Ack);
+  rpc Submit10(Submit10Request) returns (common.v1.Ack);
+}

@@ -1,0 +1,6 @@
+example/build/
+*.o
+*.a
+compile_commands.json
+.cache/
+.DS_Store

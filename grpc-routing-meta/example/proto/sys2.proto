@@ -1,0 +1,24 @@
+// sys2 system — Recipe Management. 5 transactions.
+//
+// Shares the universal process-context. In practice sys2 often fills only RecipeID
+// (the rest project as empty `Key=`), and sys2.recipe.list carries zero contexts
+// (count=0) — both are exercised by the unified sender demo.
+syntax = "proto3";
+
+package sys2.v1;
+
+import "process_context.proto";
+
+message VerifyRequest   { repeated common.v1.ProcessContext contexts = 1; }
+message DownloadRequest { repeated common.v1.ProcessContext contexts = 1; }
+message QualifyRequest  { repeated common.v1.ProcessContext contexts = 1; }
+message UploadRequest   { repeated common.v1.ProcessContext contexts = 1; }
+message ListRequest     { repeated common.v1.ProcessContext contexts = 1; }
+
+service Sys2Service {
+  rpc Verify  (VerifyRequest)   returns (common.v1.Ack);   // sys2.recipe.verify
+  rpc Download(DownloadRequest) returns (common.v1.Ack);   // sys2.recipe.download
+  rpc Qualify (QualifyRequest)  returns (common.v1.Ack);   // sys2.recipe.qualify
+  rpc Upload  (UploadRequest)   returns (common.v1.Ack);   // sys2.recipe.upload
+  rpc List    (ListRequest)     returns (common.v1.Ack);   // sys2.recipe.list (count=0)
+}

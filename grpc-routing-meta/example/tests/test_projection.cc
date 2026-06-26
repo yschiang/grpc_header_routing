@@ -163,6 +163,22 @@ int main() {
     assert(sink.Get("x-route-profile").empty());
   }
 
+  // --- EmitProcessContexts returns overflow signal (Task 1) ---
+  {
+    std::vector<std::string> few(2, "ChamberId=CH-A");
+    routingmeta::VectorSink sink;
+    bool of = routingmeta::EmitProcessContexts(sink, few);
+    assert(!of);                                                  // within budget
+    assert(sink.Get("x-process-context-digest").rfind("sha256:", 0) == 0);
+
+    std::vector<std::string> many(30, "ChamberId=CH-A");
+    routingmeta::VectorSink sink2;
+    bool of2 = routingmeta::EmitProcessContexts(sink2, many);
+    assert(of2);                                                  // count > 25
+    assert(sink2.Get("x-process-context-overflow") == "true");
+    assert(sink2.Count("x-process-context") == 0);
+  }
+
   std::printf("ALL TESTS PASSED\n");
   return 0;
 }

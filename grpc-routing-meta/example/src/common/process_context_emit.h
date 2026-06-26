@@ -34,17 +34,14 @@ constexpr size_t kHpackEntryOverhead = 32;    // gRPC/HPACK per-entry, RFC 7541 
                                               // must match the +32 in metadata_sink.h Add()
 
 // Emit the Layer 3 process-context headers for one request. `ctxs` are the already
-// URL-encoded, key-sorted "k=v&k=v" strings, in body order.
-inline void EmitProcessContexts(MetadataSink& sink, const std::vector<std::string>& ctxs) {
-  // count + format are always sent: they describe the body even when contexts are
-  // suppressed, so the backend knows how many to expect.
+// URL-encoded, key-sorted "k=v&k=v" strings, in body order. Returns true iff
+// context lines + digest were suppressed due to overflow.
+inline bool EmitProcessContexts(MetadataSink& sink, const std::vector<std::string>& ctxs) {
   sink.Add("x-process-context-count", std::to_string(ctxs.size()));
   sink.Add("x-process-context-format", "urlencoded-query-string-v1");
-  if (ctxs.empty()) return;                                   // count=0: nothing to project
+  if (ctxs.empty()) return false;                            // count=0: nothing to project
 
   static const std::string kKey = "x-process-context";
-  // What projecting all contexts (+ the digest header) would add to the metadata.
-  // Digest entry = name(24) + value 71 ("sha256:" 7 + 64 hex) + HPACK overhead.
   size_t projected = 24 + 71 + kHpackEntryOverhead;
   size_t maxline = 0;
   for (const auto& c : ctxs) {
@@ -56,12 +53,10 @@ inline void EmitProcessContexts(MetadataSink& sink, const std::vector<std::strin
                      || maxline > kMaxLineBytes
                      || sink.bytes() + projected > kMaxTotalMetaBytes;
   if (overflow) {
-    sink.Add("x-process-context-overflow", "true");           // explicit, never silent
-    return;                                                    // backend reads full detail from body
+    sink.Add("x-process-context-overflow", "true");          // explicit, never silent
+    return true;                                             // backend reads full detail from body
   }
 
-  // Within budget: digest over the canonical (sorted, '\n'-joined) projection, then
-  // one header per context.
   std::string canon;
   for (size_t i = 0; i < ctxs.size(); ++i) {
     if (i) canon.push_back('\n');
@@ -69,6 +64,7 @@ inline void EmitProcessContexts(MetadataSink& sink, const std::vector<std::strin
   }
   sink.Add("x-process-context-digest", "sha256:" + Sha256Hex(canon));
   for (const auto& c : ctxs) sink.Add(kKey, c);
+  return false;
 }
 
 }  // namespace routingmeta

@@ -1,5 +1,10 @@
 # 02 gRPC Routing Metadata Spec
 
+> **SUPERSEDED.** The normative wire contract is now [`../SPEC.md`](../SPEC.md). This
+> original proposal is kept for history and has **drifted** — e.g. §4–5 still list
+> `x-target-system` / `x-transaction-type` / `x-route-profile` / `x-routing-grain`,
+> which the kit no longer emits. Do not implement against this document.
+
 ## Table of Contents
 
 - [1. Executive Summary](#1-executive-summary)

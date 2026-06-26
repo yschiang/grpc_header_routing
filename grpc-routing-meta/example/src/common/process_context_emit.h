@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "common/metadata_sink.h"
+#include "common/proj_result.h"
 #include "common/sha256.h"
 
 namespace routingmeta {
@@ -35,7 +36,8 @@ constexpr size_t kHpackEntryOverhead = 32;    // gRPC/HPACK per-entry, RFC 7541 
 
 // Emit the Layer 3 process-context headers for one request. `ctxs` are the already
 // URL-encoded, key-sorted "k=v&k=v" strings, in body order.
-inline void EmitProcessContexts(MetadataSink& sink, const std::vector<std::string>& ctxs) {
+inline void EmitProcessContexts(MetadataSink& sink, const std::vector<std::string>& ctxs,
+                                ProjResult& result) {
   // count + format are always sent: they describe the body even when contexts are
   // suppressed, so the backend knows how many to expect.
   sink.Add("x-process-context-count", std::to_string(ctxs.size()));
@@ -57,6 +59,7 @@ inline void EmitProcessContexts(MetadataSink& sink, const std::vector<std::strin
                      || sink.bytes() + projected > kMaxTotalMetaBytes;
   if (overflow) {
     sink.Add("x-process-context-overflow", "true");           // explicit, never silent
+    result.issues.push_back({Issue::Overflow, kKey});         // non-blocking: still routes
     return;                                                    // backend reads full detail from body
   }
 

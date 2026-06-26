@@ -4,6 +4,10 @@ The one-page contract behind the `example/` kit. Written to be used for **writin
 tests and doing code review** — every numbered invariant below is something to
 assert or check. Full background (spec, domain model) is in `archive/`.
 
+> **Normative wire rules live in [`SPEC.md`](SPEC.md)** (the byte-level header contract).
+> This document is project context + the testable invariants; where it and SPEC.md
+> disagree, SPEC.md wins.
+
 ## What it is
 
 A sender-side kit that **projects routing metadata out of the gRPC request body**,

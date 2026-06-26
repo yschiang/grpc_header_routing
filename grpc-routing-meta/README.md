@@ -6,8 +6,10 @@ drift from it (the body is the single source of truth). A `protoc` plugin genera
 the projection; one **unified sender** serves every system.
 
 - **中文總覽:** [`OVERVIEW.zh.md`](OVERVIEW.zh.md) — 目的、用法、metadata 範例、error control。
-- **Design contract:** [`CONTEXT.md`](CONTEXT.md) — one page of glossary + testable
-  invariants (read this before writing tests or reviewing code).
+- **Wire contract (normative):** [`SPEC.md`](SPEC.md) — the byte-level header contract
+  both sides implement to.
+- **Project context:** [`CONTEXT.md`](CONTEXT.md) — glossary, requirements, and the
+  testable invariants (read this before writing tests or reviewing code).
 - **Runnable kit:** [`example/`](example/).
 - **Full background:** [`archive/`](archive/) — original spec, domain model, EA
   summary, codegen walkthrough.
@@ -57,6 +59,8 @@ cmake -S . -B build && cmake --build build -j     # canonical, portable
 ./build/test_projection    # or: ctest --test-dir build
 ```
 
+Full step-by-step with expected output and pass/fail gates: [`example/TESTING.md`](example/TESTING.md).
+
 Requires a C++17 compiler and Protobuf **with libprotoc**. gRPC is optional
 (generated code writes into `routingmeta::MetadataSink`); enable the
 `grpc::ClientContext` adapter with `-DROUTINGMETA_WITH_GRPC=ON`. Verified end-to-end
@@ -66,7 +70,8 @@ on Protobuf 3.20.3 and 3.21.12.
 
 ```
 README.md          this overview
-CONTEXT.md         design summary + testable invariants
+SPEC.md            normative wire contract (headers, encoding, digest, overflow)
+CONTEXT.md         project context, requirements, testable invariants
 example/
   proto/           metadata_options, process_context, sys1, sys2, sys3
   src/plugin/      protoc-gen-meta.cc        (codegen)
@@ -74,6 +79,7 @@ example/
   sender/          unified_sender.cc         (one Send<>() for all systems)
   receiver/        receiver_verify.cc
   tests/           test_projection.cc
+  TESTING.md       step-by-step verify procedure + pass/fail gates
   build.sh  CMakeLists.txt
 archive/           original spec / domain model / EA summary / codegen walkthrough
 ```

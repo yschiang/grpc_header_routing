@@ -23,10 +23,22 @@
 
 #include "common/metadata_sink.h"
 #include "common/common_headers.h"   // [+meta] Runtime + FillCommon (the 6 common headers)
-#include "common/send.h"             // [+meta] kit Send -> ProjResult
+#include "common/proj_result.h"      // [+meta] ProjResult (the kit's structured report)
 #include "sys1.proj.h"
 #include "sys2.proj.h"
 #include "sys3.proj.h"
+
+// [+meta] The Sender's OWN one-call orchestration. The kit (lib) guarantees the
+// building blocks — FillCommon (common headers) + generated ProjectMeta (body
+// projection) -> ProjResult — but COMPOSING them, and deciding what to do with the
+// result (abort vs proceed), is the Sender's job, not the lib's. One path, no
+// per-system branching; the ProjectMeta overload is chosen by Req via ADL.
+template <class Req>
+static routingmeta::ProjResult Send(const Req& req, const Runtime& rt,
+                                    routingmeta::MetadataSink& sink) {
+  FillCommon(rt, sink);
+  return ProjectMeta(req, sink);
+}
 
 // [demo] Only prints what got attached; not part of adoption.
 static void dump(const char* title, const routingmeta::VectorSink& s,

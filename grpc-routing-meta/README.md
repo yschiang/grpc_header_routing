@@ -19,13 +19,16 @@ the projection; one **unified sender** serves every system.
 | **sys3** | `example/proto/sys3.proto` | 10 | domain scalar `x-mask-id` (nested paths) + process-context |
 
 All three import the shared `example/proto/process_context.proto`, so the 7-field
-schema can't diverge. The sender is one template — no per-system branching:
+schema can't diverge. The lib provides the two building blocks (`FillCommon` +
+generated `ProjectMeta` → `ProjResult`); the **Sender** composes them — its own one
+call, no per-system branching:
 
 ```cpp
+// In the Sender (orchestration is the Sender's job, not the lib's):
 template <class Req>
-void Send(const Req& req, const Runtime& rt, MetadataSink& sink) {
-  FillCommon(rt, sink);     // 6 common headers, identical for every system
-  ProjectMeta(req, sink);   // body projection; generated overload chosen by Req type
+routingmeta::ProjResult Send(const Req& req, const Runtime& rt, MetadataSink& sink) {
+  FillCommon(rt, sink);            // 6 common headers, identical for every system  (lib)
+  return ProjectMeta(req, sink);   // body projection; overload chosen by Req type   (lib)
 }
 ```
 
@@ -44,11 +47,12 @@ body. Opaque transport failure → explicit, in-band signal.
 
 ## Error model (report, don't dictate)
 
-`ProjectMeta`/`Send` return `ProjResult{ok, issues[], duration}` and never throw on a
-data condition. A missing **required** scalar (sys3 `x-mask-id`) sets `ok=false`, records
-a `MissingRequired` issue, and emits `x-routing-error: missing:x-mask-id` (the empty header
-is not sent). Overflow is a non-blocking issue (`ok` stays true). The caller inspects
-`issues` and decides; the kit logs nothing.
+`ProjectMeta` returns `ProjResult{ok, issues[], duration}` and never throws on a
+data condition (a Sender's `Send` wrapper just forwards it). A missing **required** scalar
+(sys3 `x-mask-id`) sets `ok=false`, records a `MissingRequired` issue, and emits
+`x-routing-error: missing:x-mask-id` (the empty header is not sent). Overflow is a
+non-blocking issue (`ok` stays true). The caller inspects `issues` and decides; the kit
+logs nothing — the lib populates + reports, the Sender orchestrates.
 
 ## Build & run
 

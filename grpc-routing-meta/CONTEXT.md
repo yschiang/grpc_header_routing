@@ -72,7 +72,7 @@ so the schema cannot diverge.
 | `example/src/common/process_context_emit.h` | **policy**: count / format / digest / overflow / 7 KB guard |
 | `example/src/common/{url_encode,sha256}.h` | encode + digest primitives |
 | `example/src/common/process_context_parser.h` | receiver-side parse + `VerifyDigest` |
-| `example/sender/unified_sender.cc` | `FillCommon` + `Send<>()` + demo of all shapes |
+| `example/sender/unified_sender.cc` | the Sender: its own local `Send<>()` (= lib `FillCommon` + `ProjectMeta`) + demo of all shapes |
 | `example/receiver/receiver_verify.cc` | round-trip digest check |
 | `example/tests/test_projection.cc` | invariants 3–9 |
 | `example/tests/negative/*.proto` | malformed `(routing.project)` fixtures — codegen must reject (invariant 9, fail-loud) |

@@ -36,17 +36,26 @@ Behavior changes:
 - `EmitProcessContexts(MetadataSink&, const std::vector<std::string>&, ProjResult&)` — on overflow,
   push a **non-blocking** `Issue{Overflow}` (`ok` stays `true`) and still emit
   `x-process-context-overflow: true`. Non-overflow path unchanged.
-- **`Send<>()` promoted into the kit** as `example/src/common/send.h`:
+- **`Send<>()` is the Sender's orchestration, not the lib's.** The lib (the shared lib
+  the Sys1/2/3 teams distribute to Senders) guarantees only **populate**
+  (`FillCommon` + generated `ProjectMeta`) + **report** (`ProjResult`). Composing the two
+  calls — and deciding abort-vs-proceed on the result — is the **Sender's** job. The
+  Sender keeps its own thin wrapper:
   ```cpp
-  namespace routingmeta {
+  // in the Sender (e.g. unified_sender.cc) — NOT in the kit:
   template <class Req>
-  ProjResult Send(const Req& req, const Runtime& rt, MetadataSink& sink) {
+  routingmeta::ProjResult Send(const Req& req, const Runtime& rt, MetadataSink& sink) {
     FillCommon(rt, sink);
-    return ProjectMeta(req, sink);   // ADL-resolved at instantiation
-  }
+    return ProjectMeta(req, sink);   // ADL-resolved via the MetadataSink& arg
   }
   ```
-  Removed from `unified_sender.cc`. `Runtime` stays in `common_headers.h` (global).
+  `Runtime` stays in `common_headers.h` (global).
+  > **Corrected after implementation (commit `6b8d6d8`):** an earlier draft — and
+  > `plan.md` P0.3 — promoted `Send` into the kit as `src/common/send.h`. That crossed
+  > the lib/Sender boundary and was reverted: the lib populates + reports, the Sender
+  > orchestrates. This matches `OVERVIEW.zh.md` §2.1/§6 ("或包成 Send" = *optional*
+  > Sender sugar) and SPEC §7 (a projection reports; the caller decides). BRIEF
+  > criterion E still holds — the one unbranched path is `FillCommon`+`ProjectMeta`.
 
 Callers (`unified_sender`, `receiver_verify`, `test_projection`) still call `ProjectMeta(req, sink)`
 unqualified — ADL via the sink argument finds `routingmeta::ProjectMeta`. `ProjResult` is **not**
@@ -114,7 +123,8 @@ Lead with the ProjResult pivot — plugin, sender, tests, docs all hinge on it.
 
 1. **ProjResult pivot** — write failing tests (ProjResult shape, `x-routing-error`, no-throw,
    overflow-as-issue, duration) → make green by adding `proj_result.h`, updating
-   `process_context_emit.h`, the plugin, `send.h`, and the apps.
+   `process_context_emit.h`, the plugin, and the apps (the Sender keeps its own `Send`
+   wrapper — see the corrected `Send` boundary above).
 2. **Perf bench** — `bench_projection.cc` + wiring.
 3. **Portable build** — de-hardcode `build.sh`; confirm green locally via env-pointed protoc.
 4. **CI workflow** — author `.github/workflows/ci.yml` (+ GrpcSink smoke job).

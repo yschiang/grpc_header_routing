@@ -337,6 +337,15 @@ git commit -m "feat: ProjectMeta returns ProjResult (no throw; x-routing-error o
 
 ### Task 3: Promote `Send<>()` into the kit
 
+> **⚠ Superseded after implementation (commit `6b8d6d8`).** This task promoted `Send`
+> into the kit; it was later **reverted**. The lib/Sender boundary is: the lib (the
+> shared lib distributed to Senders) only **populates** (`FillCommon` + generated
+> `ProjectMeta`) and **reports** (`ProjResult`); the `Send` *orchestration* belongs to
+> the **Sender** (it keeps its own wrapper in `unified_sender.cc`). `src/common/send.h`
+> was removed. The steps below record what was executed at the time; see the design
+> doc §1 for the corrected boundary. BRIEF criterion E holds either way — it allows
+> `Send<>()` **/** `FillCommon`+`ProjectMeta`.
+
 Move the unified `Send` template out of the demo app into a kit header so it's part of the product (plan.md: "promote `Send` into kit"). It returns `ProjResult`.
 
 **Files:**
@@ -946,7 +955,7 @@ cd grpc-routing-meta/example && ./build.sh    # plugin builds, codegen runs, neg
 - **B** CI matrix → Task 7.
 - **C** No silent failure → build gate (already present, re-verified Task 2 step 5) + sender `x-routing-error` (Tasks 2, 4) + overflow issue (Tasks 1, 2) + receiver digest (existing).
 - **D** Exact projection → existing asserts retained (Task 2 keeps encoding/key-sort/digest); round-trip in `receiver_verify`.
-- **E** One sender path → Task 3 (`Send` in kit), Task 4 (sender uses it).
+- **E** One sender path → the lib's `FillCommon`+`ProjectMeta` is the single unbranched path; the **Sender** composes them in its own `Send` wrapper (`unified_sender.cc`). *(Tasks 3–4 originally put `Send` in the kit; reverted in `6b8d6d8` — see the Task 3 note.)*
 - **F** Policy centralized → unchanged `process_context_emit.h` constants (Tasks 1).
 - **G** Testable invariants → `test_projection` updates (Tasks 1–3, 9); negative gate in CI (Task 7).
 - **H** Perf observed → `duration` (Task 2) + bench (Task 6).

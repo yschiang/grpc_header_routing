@@ -1,3 +1,4 @@
+#undef NDEBUG  // asserts ARE the test harness — never compile them out
 // =============================================================================
 // bench_projection — criterion H: report per-call projection time. Prints
 // average us/call over many iterations for 1/2/25/60 contexts and asserts the

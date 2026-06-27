@@ -1,3 +1,4 @@
+#undef NDEBUG  // asserts ARE the test harness — never compile them out
 // =============================================================================
 // tests — projection, round-trip, digest, overflow (count AND bytes), scalar.
 // Plain asserts, zero test deps. Covers the two code paths: process-context (sys1)
@@ -47,7 +48,7 @@ int main() {
   assert(routingmeta::Sha256Hex("abc") ==
          "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 
-  // --- sys1 projection: key-sort, encode, digest, round-trip, tamper ---
+  // --- sys1 projection: key-sort, encode, digest, round-trip, drift ---
   {
     auto req = sys1Req(2);
     routingmeta::VectorSink sink;
@@ -70,7 +71,7 @@ int main() {
     assert(routingmeta::VerifyDigest(cs, dg).ok);                    // sender -> receiver consistent
     assert(routingmeta::ParseContext(cs[0])["RecipeID"] == "R/A");   // decoded back
     cs[0] += "&X=1";
-    assert(!routingmeta::VerifyDigest(cs, dg).ok);                   // tamper detected
+    assert(!routingmeta::VerifyDigest(cs, dg).ok);                   // drift detected (modified context)
   }
 
   // --- count=0: structure present, no digest / no lines ---
@@ -202,7 +203,7 @@ int main() {
     const int N = 8;
     std::vector<std::thread> ts;
     std::vector<std::string> digests(N);
-    std::vector<bool> oks(N, false);
+    std::vector<char> oks(N, 0);
     for (int i = 0; i < N; ++i)
       ts.emplace_back([&, i] {
         routingmeta::VectorSink sink;

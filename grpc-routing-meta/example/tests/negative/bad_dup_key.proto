@@ -1,0 +1,11 @@
+// NEGATIVE fixture — codegen MUST reject this (see build.sh "[neg ]").
+// Two (routing.project) tags with the SAME key would emit one header twice.
+// Validate's duplicate-key check must fail loud.
+syntax = "proto3";
+package neg.v1;
+import "metadata_options.proto";
+
+message BadDupKey {
+  string mask_id    = 1 [(routing.project) = {key: "x-mask-id"}];
+  string reticle_id = 2 [(routing.project) = {key: "x-mask-id"}];
+}

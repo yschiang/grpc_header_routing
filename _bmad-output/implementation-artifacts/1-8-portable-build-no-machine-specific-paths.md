@@ -4,7 +4,7 @@ baseline_commit: a6ecfe13d3ffa5b1771e87d83324e96514a10780
 
 # Story 1.8: Portable build (no machine-specific paths)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -46,6 +46,16 @@ so that anyone can build the kit.
   - [x] Expect: `protoc --version` prints (libprotoc 3.20.3), plugin builds, per-system codegen runs, `[neg ]` negative-codegen gate prints `ok (rejected)` for every fixture and the build does NOT abort, all four binaries (`unified_sender`/`receiver_verify`/`test_projection`/`bench_projection`) link, final `OK -> binaries`.
   - [x] Regression: `./build/test_projection` → `ALL TESTS PASSED`; `./build/bench_projection` → `BENCH PASSED` (exit 0); `./build/receiver_verify` → digest OK; `./build/unified_sender` → 3 system blocks. Wire output byte-identical (this story changes only HOW the toolchain is found, not WHAT is compiled — CR1/AD-9).
   - [x] Grep proof for AC1: `grep -nE "anaconda|/Users/|PROTO_HOME" build.sh` → no matches; `grep -n "pkg-config" build.sh` → present.
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter [diff-only] + Edge Case Hunter [diff+repo+build] + Acceptance Auditor [diff+spec+arch], no shared context). 1 patch (1 High), 0 decision-needed, 0 deferred, 2 dismissed. **Acceptance Auditor: PASS 3/3 ACs**; **Edge Case Hunter: PASS** (built + ran all 4 binaries + `otool` rpath check). **Blind Hunter: CONCERNS → 1 High** that BOTH repo-access reviewers missed because each verified only on this conda host, where the bug is masked — textbook adversarial value of the diff-only skeptic._
+
+- [x] [Review][Patch][High] **protoc would fail the `descriptor.proto` import on a stock-Linux system install** [grpc-routing-meta/example/build.sh — `IPROTO` + plugin link]. `pkg-config --cflags`/`--libs-only-L` STRIP `-I/usr/include`/`-L/usr/lib` on a system install (default pkg-config behavior), so `$PB_CFLAGS` is EMPTY there → `IPROTO` collapses to `-I proto`. The C++ compiler still finds system headers, but protoc resolves `import` ONLY from `-I` dirs, and `metadata_options.proto:3` imports `google/protobuf/descriptor.proto` → `File not found`, failing the build on the exact "stock Linux" target AC3 names. Masked on this conda host (non-system prefix → `--cflags` non-empty), which is why Edge + Auditor built green. **Fix:** switched to `pkg-config --variable=includedir`/`--variable=libdir` (bare paths, never stripped, quotable) for `-I`/`-L` — reproduces the original hardcoded `-I "$PB_INC" -L "$PB_LIB"` exactly but portably; also closes Blind F2 (unquoted `$PB_CFLAGS`/`$PB_LDIRS` word-split breaks on a prefix containing spaces — now quoted single paths). **Verified:** simulated the stock-Linux stripping via `PKG_CONFIG_SYSTEM_INCLUDE_PATH` → old `--cflags` returns `[]`, new `--variable=includedir` returns the path, and the fixed `build.sh` builds clean (exit 0, `[neg ]` gate green) under that env. Conda-host build + all 4 self-checks still green; artifacts byte-identical (digest OK).
+
+_Dismissed (2):_
+- _Blind F3 (Med) "`--libs-only-L` + hand-added `-lprotobuf` under-links transitive Abseil for a STATIC protobuf" — non-issue for the pinned CI matrix (AD-14): protobuf 3.20.3 / 3.21.12 predate the Abseil hard-dependency (introduced in protobuf 22.x / 4.x). With a shared libprotobuf the `absl_*`/`-pthread` deps resolve transitively via `NEEDED`; the original hardcoded link used the same `-L … -lprotobuf` and built. The patch keeps that exact link. Revisit only if the kit ever pins a static protobuf ≥ 22._
+- _Edge (Low) "`PROTOC` on PATH decoupled from pkg-config's libprotobuf → version skew" — matched on this host (both 3.20.3); the AD-14 CI matrix pins both via `PROTOC` + `PKG_CONFIG_PATH` per cell, and protobuf's generated-code/runtime version asserts catch a gross mismatch. The env-override decoupling is what ENABLES the matrix, not a defect._
 
 ## Dev Notes
 
@@ -136,9 +146,10 @@ claude-opus-4-8[1m] (Amelia / Senior Software Engineer) — engineering delegate
 
 ### File List
 
-- `grpc-routing-meta/example/build.sh` (MODIFIED — toolchain block replaced with `PROTOC`/`CXX` env overrides + `pkg-config protobuf` discovery and fail-loud guard; 3 flag sites rewritten; everything else byte-identical)
+- `grpc-routing-meta/example/build.sh` (MODIFIED — toolchain block replaced with `PROTOC`/`CXX` env overrides + `pkg-config protobuf` discovery and fail-loud guard; 3 flag sites rewritten; everything else byte-identical. Review patch: discovery switched from `--cflags`/`--libs-only-L` to `--variable=includedir`/`--variable=libdir` so protoc keeps the `descriptor.proto` import path on a stock-Linux system install — High finding, see Review Findings)
 
 ## Change Log
 
 - 2026-06-28 — Story 1.8 drafted (create-story): make `build.sh` toolchain-portable (drop hardcoded anaconda paths; `PROTOC`/`CXX` env overrides + `pkg-config protobuf` for flags, `-lprotoc` for the plugin); `CMakeLists.txt` already satisfies AC2 (find_package, no absolute paths) — inspection only. Verify on this conda host via `PKG_CONFIG_PATH=…/anaconda3/lib/pkgconfig`. CMake↔build.sh `bench_projection` parity gap deferred.
-- 2026-06-28 — Story 1.8 implemented (dev-story): `build.sh` toolchain block replaced with `PROTOC`/`CXX` env overrides + `pkg-config protobuf` discovery (`--cflags`/`--libs-only-L`/`--variable=libdir`) and a fail-loud guard; 3 flag sites rewritten; `-lprotoc` added by hand (no `.pc`), ordered before `-lprotobuf`. CMake unchanged (already compliant). Green build + 4 binary self-checks verified; fail-loud guard exits 1 when protobuf undiscoverable; zero machine-specific literals (boundary-corrected grep). Wire byte-identical (CR1/AD-9). Engineering by a subagent, independently re-verified in the main loop. Status → review.
+- 2026-06-28 — Story 1.8 implemented (dev-story): `build.sh` toolchain block replaced with `PROTOC`/`CXX` env overrides + `pkg-config protobuf` discovery and a fail-loud guard; 3 flag sites rewritten; `-lprotoc` added by hand (no `.pc`), ordered before `-lprotobuf`. CMake unchanged (already compliant). Green build + 4 binary self-checks verified; fail-loud guard exits 1 when protobuf undiscoverable; zero machine-specific literals. Wire byte-identical (CR1/AD-9). Engineering by a subagent, independently re-verified in the main loop. Status → review.
+- 2026-06-28 — Story 1.8 code review (3 adversarial subagents, no shared context): Auditor PASS 3/3, Edge PASS (built + ran all binaries), Blind CONCERNS → 1 **High** (both repo-access reviewers missed it — masked on the conda host). Patch: discovery switched from `--cflags`/`--libs-only-L` to `--variable=includedir`/`--variable=libdir` so protoc keeps the `descriptor.proto` import path on a stock-Linux *system* install (where `--cflags` is stripped empty); also makes the paths quoted/space-safe. Proven by simulating system stripping (`PKG_CONFIG_SYSTEM_INCLUDE_PATH`) — fixed build stays green. 2 dismissed (static-Abseil under-link = pre-3.22 non-issue; PROTOC/lib version-skew = host-matched + CI-pinned). Status → done.

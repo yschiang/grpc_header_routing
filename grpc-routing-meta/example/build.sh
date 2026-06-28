@@ -17,8 +17,11 @@ pkg-config --exists protobuf || {
   echo "protobuf not found via pkg-config: install libprotobuf-dev / protobuf-devel, or set PKG_CONFIG_PATH=<prefix>/lib/pkgconfig" >&2
   exit 1
 }
-PB_CFLAGS="$(pkg-config --cflags protobuf)"      # -I<include>
-PB_LDIRS="$(pkg-config --libs-only-L protobuf)"  # -L<lib>
+# Use --variable=includedir/libdir (bare paths, always populated) rather than
+# --cflags/--libs: pkg-config STRIPS -I/usr/include & -L/usr/lib from those on a
+# system install, which would leave protoc with no -I to resolve the
+# `google/protobuf/descriptor.proto` import. Bare paths are also quotable -> space-safe.
+PB_INCDIR="$(pkg-config --variable=includedir protobuf)"
 PB_LIBDIR="$(pkg-config --variable=libdir protobuf)"
 
 GEN="$ROOT/build/generated"
@@ -26,8 +29,8 @@ BIN="$ROOT/build"
 
 # -I dirs must be a textual prefix of the file args below, so keep them relative
 # (we cd'd into $ROOT) to match "proto/x.proto". All protos live in proto/.
-IPROTO=(-I proto $PB_CFLAGS)
-PBFLAGS=(-I "$GEN" -I "$ROOT/src" $PB_CFLAGS $PB_LDIRS -lprotobuf -Wl,-rpath,"$PB_LIBDIR")
+IPROTO=(-I proto -I "$PB_INCDIR")
+PBFLAGS=(-I "$GEN" -I "$ROOT/src" -I "$PB_INCDIR" -L "$PB_LIBDIR" -lprotobuf -Wl,-rpath,"$PB_LIBDIR")
 
 # Contract protos: --cpp_out only (no ProjectMeta). Add a new system by appending to
 # SYSTEMS; add a shared message by appending to CONTRACT.
@@ -48,8 +51,8 @@ done
 echo "[plug] protoc-gen-meta"
 $CXX $CXXFLAGS \
   src/plugin/protoc-gen-meta.cc "$GEN/metadata_options.pb.cc" \
-  -I "$GEN" $PB_CFLAGS \
-  $PB_LDIRS -lprotoc -lprotobuf -Wl,-rpath,"$PB_LIBDIR" \
+  -I "$GEN" -I "$PB_INCDIR" \
+  -L "$PB_LIBDIR" -lprotoc -lprotobuf -Wl,-rpath,"$PB_LIBDIR" \
   -o "$BIN/protoc-gen-meta"
 
 # 2b. negative codegen: every fixture under tests/negative/ MUST be rejected by the

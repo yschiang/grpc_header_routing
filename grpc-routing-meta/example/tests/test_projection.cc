@@ -5,7 +5,6 @@
 // =============================================================================
 #include <cassert>
 #include <cstdio>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -49,7 +48,9 @@ int main() {
   {
     auto req = sys1Req(2);
     routingmeta::VectorSink sink;
-    ProjectMeta(req, sink);
+    auto r = ProjectMeta(req, sink);
+    assert(r.ok);                                                   // happy path: ok, no issues (AC3)
+    assert(r.issues.empty());
     assert(sink.Count("x-process-context") == 2);
     assert(sink.Get("x-process-context-count") == "2");
     assert(sink.Get("x-process-context-format") == "urlencoded-query-string-v1");  // wire constant
@@ -104,24 +105,28 @@ int main() {
     assert(sink.Count("x-process-context") == 0);
   }
 
-  // --- sys3 scalar projection (nested) + required throw ---
+  // --- sys3 scalar projection (nested) + missing-required as data (no throw) ---
   {
     sys3::v1::Submit05Request req;
     req.mutable_job()->mutable_mask()->set_mask_id("RET-9981");
     routingmeta::VectorSink sink;
-    ProjectMeta(req, sink);
+    auto r = ProjectMeta(req, sink);
+    assert(r.ok);                                                   // happy path: ok, no issues (AC3)
+    assert(r.issues.empty());
     assert(sink.Get("x-mask-id") == "RET-9981");                    // reached via nested walk
     assert(sink.Get("x-process-context-count") == "0");            // universal pctx skeleton, empty
+    assert(sink.Get("x-routing-error").empty());                   // no error header on happy path
 
-    bool threw = false;
+    // empty required mask id -> failure-as-data, not a throw (FR1/FR2, AD-5)
     sys3::v1::Submit05Request empty;
-    try {
-      routingmeta::VectorSink s2;
-      ProjectMeta(empty, s2);
-    } catch (const std::exception&) {
-      threw = true;
-    }
-    assert(threw);                                                  // required mask id missing
+    routingmeta::VectorSink s2;
+    auto r2 = ProjectMeta(empty, s2);
+    assert(!r2.ok);                                                 // blocking issue -> ok=false
+    assert(r2.issues.size() == 1);
+    assert(r2.issues[0].kind == routingmeta::Issue::MissingRequired);
+    assert(r2.issues[0].key == "x-mask-id");
+    assert(s2.Get("x-routing-error") == "missing:x-mask-id");       // explicit error header
+    assert(s2.Get("x-mask-id").empty());                           // empty scalar NOT emitted
   }
 
   // --- empty fields project as `Key=` (present-but-empty); digest round-trips (inv. 1) ---

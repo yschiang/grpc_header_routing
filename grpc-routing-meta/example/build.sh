@@ -107,4 +107,11 @@ $CXX $CXXFLAGS -pthread tests/test_projection.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}
 echo "[bench] bench_projection"
 $CXX $CXXFLAGS tests/bench_projection.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BIN/bench_projection"
 
-echo "OK -> binaries in $BIN/"
+# 5. run the green gate. The send-time digest toggle is exercised in-process by
+#    test_projection (ProjectMeta(req, sink, false)); no second build is needed.
+echo "[test] run test_projection"
+"$BIN/test_projection"
+echo "[recv] run receiver_verify"
+"$BIN/receiver_verify" >/dev/null
+
+echo "OK -> binaries in $BIN/ (digest on + off both covered)"

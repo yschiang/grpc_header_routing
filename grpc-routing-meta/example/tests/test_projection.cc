@@ -276,6 +276,12 @@ int main() {
     assert(sink.Count("x-process-context") == 1);
     assert(sink.Get("x-process-context") ==
            "ChamberId=CH-A&LotID=LOT01&OperationNO=OP100&PartID=&RecipeID=R%2FA&StageID=ETCH&Tech=N5");
+    // Also lock the DIGEST value, not just its presence: for one context the digest
+    // preimage IS the line above, so this pins the preimage construction (join/order)
+    // against an INDEPENDENT reference — `printf '%s' '<line>' | shasum -a 256`. If the
+    // digest were `!empty()`-only, a preimage drift (separator/order) would slip through.
+    assert(sink.Get("x-process-context-digest") ==
+           "sha256:3c8087d9f3dcb8c057146eabdd75b4b004f548160d1c636450176925465bf31b");
   }
 
   // --- 1.12 Task 2: determinism — same request projects byte-identically twice (AC2) ---

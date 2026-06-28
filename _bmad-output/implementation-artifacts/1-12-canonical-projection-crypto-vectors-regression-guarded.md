@@ -4,7 +4,7 @@ baseline_commit: 34c0e96f80a531a195d1bef7e24d52c7ce97e4c2
 
 # Story 1.12: Canonical projection + crypto vectors, regression-guarded
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -160,3 +160,15 @@ claude-opus-4-8[1m] (engineering subagent under Amelia/dev-story; main-loop inde
 
 - 2026-06-28 — Story 1.12 drafted (create-story): lock canonical projection + crypto by tests. Adds a byte-exact golden context, a determinism check, SHA-256 KATs (empty/55/56/1M-'a') + url-encode round-trips, all-10 sys3 getter-path asserts, and exact-threshold overflow boundaries (25/26, 512/513, 7168/7169); hardens `build.sh`'s `[neg ]` gate to assert the rejection REASON. Resolves three deferred items (1.1 sys3 coverage, 1.2 boundaries, 1.10 gate reason). No wire/projection change — pure regression lock (CR1/AD-9).
 - 2026-06-28 — Story 1.12 implemented (dev-story): all 7 tasks done. `tests/test_projection.cc` + `build.sh` only. Golden literal pinned; determinism via dual-sink equality; 4 SHA-256 KATs vs independent `python3`/`shasum` references; all 10 sys3 getter paths + deep-nested missing-required; exact boundaries calibrated empirically (line skeleton=63 B → `PartID(449/450)`=512/513; total 21×200+1×238=7168/7169); `[neg ]` gate reason-checks all four fixtures (bash-3.2-safe). Build links, `ALL TESTS PASSED`, `receiver_verify` digest UNCHANGED (`efafba16…`), bench PASSED. No drift — zero wire bytes changed. Status → review.
+- 2026-06-28 — Story 1.12 code review (3 adversarial reviewers, no shared context): Acceptance Auditor + Edge Case Hunter PASS (all 3 ACs MET, all 3 deferred items RESOLVED-in-code, wire frozen verified, build/test/digest re-run green). One Blind-Hunter MED accepted: the canonical **digest value** was only `!empty()`-checked, so a preimage-construction drift (join/order) could slip past. Resolved: pinned the golden single-context digest to an INDEPENDENT reference `sha256:3c8087d9…bf31b` (= `shasum -a 256` of the golden line) in the Task-1 block — this both proves and locks that the kit's digest preimage IS the canonical line. Other Blind findings dismissed with cause: high-byte encode-leak already locked by the pre-existing `UrlEncode("\xC3\xA9")=="%C3%A9"` (test:43); 7168 total + 55-byte KAT independently reconstructed/recomputed correct by both repo-access reviewers. Rebuilt: `ALL TESTS PASSED`, digest still `efafba16…`. Test-only addition; no wire change.
+
+## Senior Developer Review (AI)
+
+**Date:** 2026-06-28 · **Outcome:** Approve (1 Med fixed, no High). Three independent adversarial reviewers, no shared context.
+
+- **Acceptance Auditor (spec/arch):** AC1/AC2/AC3 MET; deferred 1.1/1.2/1.10 RESOLVED in code (not just ledger); AD-9/CR1 wire-frozen verified via `--stat` (only `test_projection.cc` + `build.sh`); bookkeeping correct. No High/Med.
+- **Edge Case Hunter (repo + build):** Ran build + binaries; `ALL TESTS PASSED`, digest `efafba16…` unchanged. Independently reconstructed the 63 B skeleton, the 449/450 line boundary, and the 7168 total (incl. HPACK +32 accounting) — all exact and would catch a `>`→`>=` slip. All 10 sys3 getter paths match the proto; the 4 `[neg ]` `want` substrings are verbatim from `protoc-gen-meta.cc` and a wrong-reason reject now fails the gate. No High/Med.
+- **Blind Hunter (diff-only):** Med — digest value never pinned (only `!empty()`). **Action taken (fixed):** pinned golden single-context digest to independent `sha256:3c8087d9…bf31b`. Its other findings were artifacts of no-repo-access and dismissed with cause: high-byte encode already locked at `test:43`; 7168 and the 55-byte KAT independently verified correct by the two repo reviewers.
+
+### Action Items
+- [x] [AI-Review][Med] Pin the canonical digest value for the golden case to an independent reference (closes preimage-drift gap) — done in `tests/test_projection.cc` Task-1 block.

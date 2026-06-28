@@ -21,7 +21,7 @@ struct Issue {
 struct ProjResult {
   bool ok = true;                       // false only on a blocking issue (missing required)
   std::vector<Issue> issues;
-  std::chrono::nanoseconds duration{};  // self-timed by ProjectMeta (story 1.6); 0 until then
+  std::chrono::nanoseconds duration{};  // populated by ProjectMeta's self-timing; read by the caller (no kit logging — NFR7)
 };
 
 }  // namespace routingmeta

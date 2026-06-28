@@ -52,6 +52,7 @@ int main() {
     auto r = ProjectMeta(req, sink);
     assert(r.ok);                                                   // happy path: ok, no issues (AC3)
     assert(r.issues.empty());
+    assert(r.duration.count() > 0);                                 // ProjectMeta self-timed (story 1.6, AC1)
     assert(sink.Count("x-process-context") == 2);
     assert(sink.Get("x-process-context-count") == "2");
     assert(sink.Get("x-process-context-format") == "urlencoded-query-string-v1");  // wire constant
@@ -204,6 +205,7 @@ int main() {
     auto rg = routingmeta::Send(good, routingmeta::Runtime{"C", "F18", "TOOL1"}, s1);
     assert(rg.ok);                                                  // happy path through Send
     assert(rg.issues.empty());
+    assert(rg.duration.count() > 0);                                // Send propagates ProjectMeta's duration (AC2)
     assert(s1.Get("x-mask-id") == "RET-1");                         // ProjectMeta ran
     assert(s1.Get("x-tool-id") == "TOOL1");                         // FillCommon ran -> Send = both
 

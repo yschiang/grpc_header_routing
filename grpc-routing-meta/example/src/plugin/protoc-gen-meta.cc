@@ -199,7 +199,7 @@ class ProjGen : public CodeGenerator {
         "#include \"$b$.proj.h\"\n"
         "#include \"common/url_encode.h\"\n"
         "#include \"common/process_context_emit.h\"\n"
-        "#include <vector>\n#include <string>\n\n",
+        "#include <chrono>\n#include <vector>\n#include <string>\n\n",
         "b", base);
 
       p.Print("namespace routingmeta {\n\n");
@@ -210,7 +210,8 @@ class ProjGen : public CodeGenerator {
         if (projs.empty() && !ctxf) continue;
 
         p.Print("routingmeta::ProjResult ProjectMeta(const $ns$::$m$& req, routingmeta::MetadataSink& sink) {\n"
-                "  routingmeta::ProjResult result;\n",
+                "  routingmeta::ProjResult result;\n"
+                "  const auto _proj_t0 = std::chrono::steady_clock::now();\n",
                 "ns", ns, "m", d->name());
 
         for (const auto& pj : projs) {
@@ -258,7 +259,8 @@ class ProjGen : public CodeGenerator {
           p.Print("    if (routingmeta::EmitProcessContexts(sink, ctxs))\n"
                   "      result.issues.push_back({routingmeta::Issue::Overflow, \"\"});\n  }\n");
         }
-        p.Print("  return result;\n}\n\n");
+        p.Print("  result.duration = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - _proj_t0);\n"
+                "  return result;\n}\n\n");
       }
       p.Print("}  // namespace routingmeta\n");
     }

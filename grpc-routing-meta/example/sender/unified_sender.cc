@@ -23,17 +23,15 @@
 
 #include "common/metadata_sink.h"
 #include "common/common_headers.h"   // [+meta] Runtime + FillCommon (the 6 common headers)
+#include "common/send.h"             // [+meta] routingmeta::Send — the kit's one sender path
 #include "sys1.proj.h"
 #include "sys2.proj.h"
 #include "sys3.proj.h"
 
-// [+meta] The one call your app makes. Works for any request type; ProjectMeta
-// resolves by Req. No system/method branching anywhere.
-template <class Req>
-void Send(const Req& req, const routingmeta::Runtime& rt, routingmeta::MetadataSink& sink) {
-  FillCommon(rt, sink);
-  ProjectMeta(req, sink);
-}
+// [+meta] The one call your app makes is routingmeta::Send (from common/send.h):
+// = FillCommon + generated ProjectMeta, returns ProjResult, branchless. It resolves
+// by ADL on the sink argument — no system/method branching anywhere, and the kit
+// itself never includes the per-system generated headers.
 
 // [demo] Only prints what got attached; not part of adoption.
 static void dump(const char* title, const routingmeta::VectorSink& s) {
@@ -105,6 +103,16 @@ int main() {
     routingmeta::VectorSink sink;                  // [+meta]
     Send(req, rt, sink);                           // [+meta]
     dump("sys1  Calculate (60 contexts -> overflow)", sink);       // [demo]
+  }
+
+  // --- sys3 EMPTY required mask — failure-as-data through Send (no throw) ---
+  {
+    sys3::v1::Submit05Request req;                 // [app] mask_id left empty (the bug)
+    routingmeta::VectorSink sink;                  // [+meta]
+    auto r = Send(req, routingmeta::Runtime{"CORR-sys3-005", "F18", "LITHO01"}, sink);  // [+meta] no throw
+    dump("sys3 Submit05 (EMPTY mask -> x-routing-error)", sink);   // [demo]
+    std::printf("  -> ok=%s  issues=%zu  duration=%lldns\n\n",     // [demo] caller reads the result
+                r.ok ? "true" : "false", r.issues.size(), (long long)r.duration.count());
   }
 
   std::printf("All 16 transaction types (sys1 x1, sys2 x5, sys3 x10) route through the same Send<>().\n");

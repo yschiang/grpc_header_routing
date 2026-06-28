@@ -10,6 +10,7 @@
 
 #include "common/metadata_sink.h"
 #include "common/common_headers.h"
+#include "common/send.h"
 #include "common/process_context_parser.h"
 #include "common/process_context_emit.h"
 #include "common/sha256.h"
@@ -193,6 +194,27 @@ int main() {
     assert(!sink.Get("x-source-system").empty());
     assert(sink.Get("x-target-system").empty());                   // selectors NOT emitted
     assert(sink.Get("x-route-profile").empty());
+  }
+
+  // --- routingmeta::Send: branchless kit sender = FillCommon + ProjectMeta, no throw ---
+  {
+    sys3::v1::Submit05Request good;
+    good.mutable_job()->mutable_mask()->set_mask_id("RET-1");
+    routingmeta::VectorSink s1;
+    auto rg = routingmeta::Send(good, routingmeta::Runtime{"C", "F18", "TOOL1"}, s1);
+    assert(rg.ok);                                                  // happy path through Send
+    assert(rg.issues.empty());
+    assert(s1.Get("x-mask-id") == "RET-1");                         // ProjectMeta ran
+    assert(s1.Get("x-tool-id") == "TOOL1");                         // FillCommon ran -> Send = both
+
+    sys3::v1::Submit05Request bad;                                  // empty required mask
+    routingmeta::VectorSink s2;
+    auto rb = routingmeta::Send(bad, routingmeta::Runtime{"C", "F18", "TOOL1"}, s2);  // must NOT throw
+    assert(!rb.ok);                                                 // FR1 binds Send: propagate, don't throw
+    assert(rb.issues.size() == 1);
+    assert(rb.issues[0].kind == routingmeta::Issue::MissingRequired);
+    assert(s2.Get("x-routing-error") == "missing:x-mask-id");
+    assert(s2.Get("x-mask-id").empty());                           // empty scalar suppressed
   }
 
   std::printf("ALL TESTS PASSED\n");

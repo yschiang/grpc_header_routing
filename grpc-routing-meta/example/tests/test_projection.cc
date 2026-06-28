@@ -278,7 +278,7 @@ int main() {
 
     auto bad = VerifyDigest({"ChamberId=CH-A"}, "sha256:not-a-real-digest");
     assert(!bad.ok && !bad.error.empty());          // malformed digest -> clean reject
-    assert(!VerifyDigest({"ChamberId=CH-A"}, "").ok);  // empty digest -> not-ok, no crash
+    assert(VerifyDigest({"ChamberId=CH-A"}, "").ok);   // absent digest -> OK (verify-if-present), no crash
   }
 
   std::printf("ALL TESTS PASSED\n");

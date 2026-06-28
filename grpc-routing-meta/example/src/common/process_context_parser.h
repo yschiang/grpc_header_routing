@@ -73,7 +73,8 @@ struct VerifyResult {
 
 // Recompute the digest over the received contexts (same canonical rule as the
 // sender: contexts already key-sorted internally; join by '\n') and compare to
-// the received x-process-context-digest. Detects drift between header and body.
+// the received x-process-context-digest **if one is present** (verify-if-present);
+// an absent digest is skipped, not treated as drift. Detects drift between header and body.
 inline VerifyResult VerifyDigest(const std::vector<std::string>& contexts,
                                  const std::string& received_digest) {
   VerifyResult r;
@@ -85,12 +86,14 @@ inline VerifyResult VerifyDigest(const std::vector<std::string>& contexts,
   }
   r.actual_digest = "sha256:" + Sha256Hex(canon);
   if (received_digest.empty()) {
-    r.error = "no digest provided (overflow or sender omitted)";
-    r.ok = false;
-  } else {
-    r.ok = (r.actual_digest == received_digest);
-    if (!r.ok) r.error = "digest mismatch: header/body projection drift";
+    // Verify-if-present: an ABSENT digest is not drift. The sender may have omitted it
+    // (emit_digest=false), or overflow suppressed it — there is nothing to recompute
+    // against, so accept. A present-but-wrong digest still rejects below.
+    r.ok = true;
+    return r;
   }
+  r.ok = (r.actual_digest == received_digest);
+  if (!r.ok) r.error = "digest mismatch: header/body projection drift";
   return r;
 }
 

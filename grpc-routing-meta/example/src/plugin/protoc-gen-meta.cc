@@ -251,7 +251,10 @@ class ProjGen : public CodeGenerator {
           p.Print("      ctxs.push_back(std::move(s));\n    }\n");
           p.Print("    if (EmitProcessContexts(sink, ctxs)) _r.issues.push_back({Issue::Overflow, \"\"});\n  }\n");
         }
-        p.Print("  _r.duration = std::chrono::steady_clock::now() - _t0;\n  return _r;\n}\n\n");
+        // duration_cast, not implicit conversion: steady_clock::duration -> nanoseconds
+        // is only implicitly convertible where it's lossless; cast makes it portable.
+        p.Print("  _r.duration = std::chrono::duration_cast<std::chrono::nanoseconds>(\n"
+                "      std::chrono::steady_clock::now() - _t0);\n  return _r;\n}\n\n");
       }
       p.Print("}  // namespace routingmeta\n");
     }

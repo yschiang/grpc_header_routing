@@ -30,8 +30,7 @@ constexpr size_t kMaxTotalMetaBytes = 7168;   // 7 KB — total of all headers W
 constexpr size_t kMaxContexts       = 25;     // also cap raw count (spec Appendix C)
 constexpr size_t kMaxLineBytes      = 512;    // cap on the encoded VALUE of one context
                                               // (its HPACK entry is this + name + 32)
-constexpr size_t kHpackEntryOverhead = 32;    // gRPC/HPACK per-entry, RFC 7541 §4.1;
-                                              // must match the +32 in metadata_sink.h Add()
+// kHpackEntryOverhead lives in metadata_sink.h (single source) — included above.
 
 // Emit the Layer 3 process-context headers for one request. `ctxs` are the already
 // URL-encoded, key-sorted "k=v&k=v" strings, in body order. Returns true iff
@@ -42,6 +41,8 @@ inline bool EmitProcessContexts(MetadataSink& sink, const std::vector<std::strin
   if (ctxs.empty()) return false;                            // count=0: nothing to project
 
   static const std::string kKey = "x-process-context";
+  // Pre-charge the digest header we'll emit below: name "x-process-context-digest"(24)
+  // + value "sha256:"(7) + 64 hex = 71, + one HPACK entry.
   size_t projected = 24 + 71 + kHpackEntryOverhead;
   size_t maxline = 0;
   for (const auto& c : ctxs) {

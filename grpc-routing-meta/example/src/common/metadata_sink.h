@@ -12,15 +12,18 @@
 
 namespace routingmeta {
 
+// gRPC/HPACK per-entry overhead, RFC 7541 §4.1. gRPC bounds metadata by
+// sum(name.size + value.size + 32); the size guard in process_context_emit.h reads
+// this same constant, so our budget check matches what gRPC actually enforces.
+constexpr std::size_t kHpackEntryOverhead = 32;
+
 class MetadataSink {
  public:
   virtual ~MetadataSink() = default;
 
   // Non-virtual: every Add updates the running byte total, then delegates to Write.
-  // gRPC bounds metadata by sum(name.size + value.size + 32) — RFC 7541 §4.1. Using
-  // the same formula here means our budget check matches what gRPC actually enforces.
   void Add(const std::string& key, const std::string& value) {
-    bytes_ += key.size() + value.size() + 32;  // +32 == kHpackEntryOverhead in process_context_emit.h
+    bytes_ += key.size() + value.size() + kHpackEntryOverhead;
     Write(key, value);
   }
   std::size_t bytes() const { return bytes_; }

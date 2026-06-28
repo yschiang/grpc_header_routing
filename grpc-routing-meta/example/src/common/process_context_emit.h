@@ -34,13 +34,15 @@ constexpr size_t kHpackEntryOverhead = 32;    // gRPC/HPACK per-entry, RFC 7541 
                                               // must match the +32 in metadata_sink.h Add()
 
 // Emit the Layer 3 process-context headers for one request. `ctxs` are the already
-// URL-encoded, key-sorted "k=v&k=v" strings, in body order.
-inline void EmitProcessContexts(MetadataSink& sink, const std::vector<std::string>& ctxs) {
+// URL-encoded, key-sorted "k=v&k=v" strings, in body order. Returns true iff overflow
+// was emitted (the caller records a non-blocking Issue{Overflow}); the overflow policy
+// itself stays here (AD-7/NFR6).
+inline bool EmitProcessContexts(MetadataSink& sink, const std::vector<std::string>& ctxs) {
   // count + format are always sent: they describe the body even when contexts are
   // suppressed, so the backend knows how many to expect.
   sink.Add("x-process-context-count", std::to_string(ctxs.size()));
   sink.Add("x-process-context-format", "urlencoded-query-string-v1");
-  if (ctxs.empty()) return;                                   // count=0: nothing to project
+  if (ctxs.empty()) return false;                             // count=0: nothing to project
 
   static const std::string kKey = "x-process-context";
   // What projecting all contexts (+ the digest header) would add to the metadata.
@@ -57,7 +59,7 @@ inline void EmitProcessContexts(MetadataSink& sink, const std::vector<std::strin
                      || sink.bytes() + projected > kMaxTotalMetaBytes;
   if (overflow) {
     sink.Add("x-process-context-overflow", "true");           // explicit, never silent
-    return;                                                    // backend reads full detail from body
+    return true;                                               // backend reads full detail from body
   }
 
   // Within budget: digest over the canonical (sorted, '\n'-joined) projection, then
@@ -69,6 +71,7 @@ inline void EmitProcessContexts(MetadataSink& sink, const std::vector<std::strin
   }
   sink.Add("x-process-context-digest", "sha256:" + Sha256Hex(canon));
   for (const auto& c : ctxs) sink.Add(kKey, c);
+  return false;                                               // within budget: no overflow
 }
 
 }  // namespace routingmeta

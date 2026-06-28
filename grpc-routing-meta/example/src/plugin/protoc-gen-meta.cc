@@ -251,7 +251,9 @@ class ProjGen : public CodeGenerator {
           // count / format / digest / overflow + the 7KB total-size guard all live
           // in the shared helper, so the policy is in one place (not baked into each
           // generated file).
-          p.Print("    routingmeta::EmitProcessContexts(sink, ctxs);\n  }\n");
+          // overflow is non-blocking: record Issue{Overflow}, leave result.ok unchanged.
+          p.Print("    if (routingmeta::EmitProcessContexts(sink, ctxs))\n"
+                  "      result.issues.push_back({routingmeta::Issue::Overflow, \"\"});\n  }\n");
         }
         p.Print("  return result;\n}\n\n");
       }

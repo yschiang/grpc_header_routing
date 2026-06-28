@@ -86,12 +86,15 @@ int main() {
   {
     auto req = sys1Req(30);
     routingmeta::VectorSink sink;
-    ProjectMeta(req, sink);
+    auto r = ProjectMeta(req, sink);
     assert(sink.Get("x-process-context-count") == "30");
     assert(sink.Get("x-process-context-format") == "urlencoded-query-string-v1");  // survives overflow (inv. 8)
     assert(sink.Get("x-process-context-overflow") == "true");
     assert(sink.Count("x-process-context") == 0);
     assert(sink.Get("x-process-context-digest").empty());
+    assert(r.ok);                                                   // overflow is non-blocking (FR3, AC1)
+    assert(r.issues.size() == 1);                                   // exactly one Overflow issue (AC2)
+    assert(r.issues[0].kind == routingmeta::Issue::Overflow);
   }
 
   // --- overflow by BYTES (<=25 contexts but total > 7KB via padded field) ---
@@ -99,10 +102,13 @@ int main() {
     const std::string pad(300, 'x');                                // each context ~390 bytes
     auto req = sys1Req(20, "RCP", pad.c_str());                      // count 20 <= 25
     routingmeta::VectorSink sink;
-    ProjectMeta(req, sink);
+    auto r = ProjectMeta(req, sink);
     assert(sink.Get("x-process-context-count") == "20");
     assert(sink.Get("x-process-context-overflow") == "true");       // tripped by SIZE, not count
     assert(sink.Count("x-process-context") == 0);
+    assert(r.ok);                                                   // non-blocking (AC1)
+    assert(r.issues.size() == 1);
+    assert(r.issues[0].kind == routingmeta::Issue::Overflow);
   }
 
   // --- sys3 scalar projection (nested) + missing-required as data (no throw) ---
@@ -147,10 +153,13 @@ int main() {
     sys1::v1::CalculateRequest req;
     req.add_contexts()->set_part_id(std::string(600, 'x'));         // one value > 512 B
     routingmeta::VectorSink sink;
-    ProjectMeta(req, sink);
+    auto r = ProjectMeta(req, sink);
     assert(sink.Get("x-process-context-count") == "1");             // count<=25, total<7KB:
     assert(sink.Get("x-process-context-overflow") == "true");       // only the line cap can fire
     assert(sink.Count("x-process-context") == 0);
+    assert(r.ok);                                                   // non-blocking (AC1)
+    assert(r.issues.size() == 1);                                   // line-cap trigger (maxline branch)
+    assert(r.issues[0].kind == routingmeta::Issue::Overflow);
   }
 
   // --- common headers: 6 present, uniform, routing-selectors absent (inv. 2, 10) ---

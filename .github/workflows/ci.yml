@@ -80,3 +80,38 @@ jobs:
             -Wl,-rpath,"$(pkg-config --variable=libdir protobuf)" \
             -o build/test_concurrency_tsan
           ./build/test_concurrency_tsan
+      - name: leak + memory-safety gate (AddressSanitizer + LeakSanitizer + UBSan)
+        # Proves the kit's resource-safety claim at runtime, not by inspection: the
+        # three allocation paths (message build, projection, parse+digest) must be
+        # free of leaks, use-after-free and UB. LSan only runs on Linux (unsupported
+        # on the macOS dev host), so CI is its only home — locally only the ASan/UBSan
+        # halves are reproducible. One representative cell, like the TSan gate.
+        # libprotobuf keeps a process-lifetime descriptor pool reachable from globals
+        # (not a leak by LSan's reachability definition); the suppression is a
+        # belt-and-braces guard against a future protobuf static — the kit's own
+        # allocations (std::string/vector, RAII) stay gated.
+        if: matrix.cxx == 'clang++' && matrix.protobuf == '3.21.12'
+        working-directory: grpc-routing-meta/example
+        env:
+          PKG_CONFIG_PATH: ${{ env.PREFIX }}/lib/pkgconfig
+          LD_LIBRARY_PATH: ${{ env.PREFIX }}/lib
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          echo 'leak:libprotobuf' > build/lsan.supp
+          export LSAN_OPTIONS="suppressions=$PWD/build/lsan.supp"
+          PB_INC="$(pkg-config --variable=includedir protobuf)"
+          PB_LIB="$(pkg-config --variable=libdir protobuf)"
+          for cell in \
+            tests/test_projection.cc:asan_test_projection \
+            sender/unified_sender.cc:asan_unified_sender \
+            receiver/receiver_verify.cc:asan_receiver_verify; do
+            src="${cell%%:*}"; out="${cell##*:}"
+            "$CXX" -std=c++17 -fsanitize=address,undefined -fno-omit-frame-pointer -O1 -g \
+              "$src" build/generated/*.pb.cc build/generated/*.proj.cc \
+              -I build/generated -I src -I "$PB_INC" \
+              -L "$PB_LIB" -lprotobuf -Wl,-rpath,"$PB_LIB" \
+              -o "build/$out"
+            echo "== run $out under ASan+LSan+UBSan =="
+            "./build/$out"
+          done

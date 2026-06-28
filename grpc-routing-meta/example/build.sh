@@ -56,17 +56,32 @@ $CXX $CXXFLAGS \
   -o "$BIN/protoc-gen-meta"
 
 # 2b. negative codegen: every fixture under tests/negative/ MUST be rejected by the
-#     plugin's Validate pass (the "fail loud, never silent" contract). protoc returns
-#     non-zero when the plugin does -> we assert that here.
-echo "[neg ] codegen must reject malformed (routing.project)"
+#     plugin's Validate pass (the "fail loud, never silent" contract) AND for the
+#     RIGHT reason. A fixture rejected by accident (a typo, a bad import) would still
+#     be non-zero and pass a mere "did it fail?" check — so we capture stderr and
+#     assert the expected diagnostic substring per fixture.
+echo "[neg ] codegen must reject malformed (routing.project) — for the right reason"
 neg_ok=1
 for f in tests/negative/*.proto; do
-  if "$PROTOC" "${IPROTO[@]}" -I tests/negative \
-       --plugin=protoc-gen-meta="$BIN/protoc-gen-meta" \
-       --meta_out="$GEN" "$f" >/dev/null 2>&1; then
-    echo "       FAIL: $f was accepted but must be rejected"; neg_ok=0
+  base="$(basename "$f")"
+  case "$base" in
+    bad_dup_key.proto)                want='duplicate (routing.project) key' ;;
+    bad_message_project.proto)        want='message field cannot project' ;;
+    bad_project_under_repeated.proto) want='is set under repeated field' ;;
+    bad_repeated_scalar.proto)        want='repeated field cannot project' ;;
+    *)                                want='' ;;
+  esac
+  err="$("$PROTOC" "${IPROTO[@]}" -I tests/negative \
+         --plugin=protoc-gen-meta="$BIN/protoc-gen-meta" \
+         --meta_out="$GEN" "$f" 2>&1 1>/dev/null)" && {
+    echo "       FAIL: $base was accepted but must be rejected"; neg_ok=0; continue; }
+  if [ -z "$want" ]; then
+    echo "       WARN: $base rejected, but no expected reason mapped (reason unchecked)"
+  elif printf '%s' "$err" | grep -qF -- "$want"; then
+    echo "       ok (rejected for \"$want\"): $base"
   else
-    echo "       ok (rejected): $(basename "$f")"
+    echo "       FAIL: $base rejected, but NOT for the expected reason \"$want\""
+    echo "             got: $err"; neg_ok=0
   fi
 done
 [ "$neg_ok" = 1 ] || { echo "negative codegen check FAILED"; exit 1; }

@@ -47,6 +47,45 @@ int main() {
   assert(routingmeta::Sha256Hex("abc") ==
          "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 
+  // SHA-256 known-answer vectors (independent oracle: python hashlib). Pins the
+  // hand-rolled digest at the padding boundaries where it is most fragile —
+  // len%64 == 55 (pad fits one block), == 56 (forces a 2nd block), == 63, == 0/64
+  // (block edges) — plus a multi-block message.
+  assert(routingmeta::Sha256Hex("") ==
+         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  assert(routingmeta::Sha256Hex(std::string(55, 'a')) ==
+         "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318");
+  assert(routingmeta::Sha256Hex(std::string(56, 'a')) ==
+         "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a");
+  assert(routingmeta::Sha256Hex(std::string(63, 'a')) ==
+         "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34");
+  assert(routingmeta::Sha256Hex(std::string(64, 'a')) ==
+         "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb");
+  assert(routingmeta::Sha256Hex(std::string(1000, 'a')) ==
+         "41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3");
+
+  // Canonical-encoding regression: pin the EXACT bytes + digest for the OVERVIEW §3
+  // sys1 2-context case (LOT01/CH-A, LOT02/CH-B, full fields). Any key-sort or
+  // url-encoding drift changes these bytes and fails loudly. Golden reproduces the
+  // OVERVIEW.zh.md §3 "sha256:efafba16…" header.
+  {
+    sys1::v1::CalculateRequest req;
+    req.set_tool_id("ETCH01");
+    auto* a = req.add_contexts();
+    a->set_lot_id("LOT01"); a->set_chamber_id("CH-A"); a->set_recipe_id("RCP_ETCH_V3");
+    a->set_tech("N5"); a->set_part_id("PART-A"); a->set_stage_id("ETCH"); a->set_operation_no("OP100");
+    auto* b = req.add_contexts();
+    b->set_lot_id("LOT02"); b->set_chamber_id("CH-B"); b->set_recipe_id("RCP_ETCH_V3");
+    b->set_tech("N5"); b->set_part_id("PART-A"); b->set_stage_id("ETCH"); b->set_operation_no("OP100");
+    routingmeta::VectorSink sink;
+    ProjectMeta(req, sink);
+    assert(sink.Get("x-process-context") ==
+           "ChamberId=CH-A&LotID=LOT01&OperationNO=OP100&PartID=PART-A&"
+           "RecipeID=RCP_ETCH_V3&StageID=ETCH&Tech=N5");
+    assert(sink.Get("x-process-context-digest") ==
+           "sha256:efafba166aabd1be8ef91d0751220f106077b06d14940254322a23da966bd1dd");
+  }
+
   // --- sys1 projection: key-sort, encode, digest, round-trip, drift ---
   {
     auto req = sys1Req(2);
@@ -218,6 +257,28 @@ int main() {
       assert(!digests[i].empty());
       assert(digests[i] == digests[0]);                          // deterministic across threads
     }
+  }
+
+  // --- parser robustness: malformed / truncated / duplicate input must not crash;
+  //     policy is lenient + last-wins (documented in process_context_parser.h) ---
+  {
+    using routingmeta::UrlDecode; using routingmeta::ParseContext;
+    using routingmeta::VerifyDigest;
+    assert(UrlDecode("%2") == "%2");       // truncated escape at end -> emit literally
+    assert(UrlDecode("%") == "%");         // lone percent -> emit literally
+    assert(UrlDecode("%ZZ") == "%ZZ");     // invalid hex -> emit literally
+    assert(UrlDecode("%2f") == "/");       // lowercase hex digits accepted
+    assert(UrlDecode("a%2Fb") == "a/b");   // valid escapes still decode
+
+    assert(ParseContext("").empty());               // empty input
+    assert(ParseContext("novalue").empty());        // no '=' -> pair skipped
+    auto mixed = ParseContext("a=1&novalue&b=2");   // skip the bad pair, keep good
+    assert(mixed["a"] == "1" && mixed["b"] == "2" && mixed.count("novalue") == 0);
+    assert(ParseContext("k=1&k=2")["k"] == "2");    // duplicate key -> LAST wins
+
+    auto bad = VerifyDigest({"ChamberId=CH-A"}, "sha256:not-a-real-digest");
+    assert(!bad.ok && !bad.error.empty());          // malformed digest -> clean reject
+    assert(!VerifyDigest({"ChamberId=CH-A"}, "").ok);  // empty digest -> not-ok, no crash
   }
 
   std::printf("ALL TESTS PASSED\n");

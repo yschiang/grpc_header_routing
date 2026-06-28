@@ -42,6 +42,12 @@ inline std::string UrlDecode(const std::string& in) {
 }
 
 // Parse one "k=v&k=v" context string into an ordered key->value map (decoded).
+//
+// Policy: LENIENT, LAST-WINS. This parses bytes already received over the wire, so it
+// never throws or aborts on malformed input: a pair without '=' is skipped, a truncated
+// or invalid %-escape is emitted literally (see UrlDecode), and a duplicate key keeps the
+// LAST value (std::map assignment). Robustness over strictness — a mangled header
+// degrades to a best-effort parse; VerifyDigest is what actually catches drift/tampering.
 inline std::map<std::string, std::string> ParseContext(const std::string& ctx) {
   std::map<std::string, std::string> kv;
   size_t i = 0;

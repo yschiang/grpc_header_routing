@@ -1,0 +1,11 @@
+// NEGATIVE fixture — codegen MUST reject this (see build.sh "[neg ]").
+// TWO scalar leaves projecting the SAME key: a single-valued header would be
+// emitted twice. Validate() must fail loud (duplicate-key branch).
+syntax = "proto3";
+package neg.v1;
+import "metadata_options.proto";
+
+message BadDuplicateKey {
+  string mask_id   = 1 [(routing.project) = {key: "x-mask-id"}];
+  string mask_id_2 = 2 [(routing.project) = {key: "x-mask-id"}];
+}

@@ -4,7 +4,7 @@ baseline_commit: fc3dd4b9eec1e0bd254da463fd45640d48f017f9
 
 # Story 1.1: `ProjectMeta` returns `ProjResult`, no throw
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -49,6 +49,17 @@ so that a bad request is caught at the source and surfaced — never silent, nev
   - [x] `cd grpc-routing-meta/example && ./build.sh` — rebuilds `protoc-gen-meta`, reruns codegen (new `*.proj.{h,cc}` signatures), links all binaries.
   - [x] Run `./build/test_projection` → expect `ALL TESTS PASSED`.
   - [x] Run `./build/unified_sender` and `./build/receiver_verify` → confirm no regression (they must still run; `Send` discards the new return value — CR2/AD-10). Sender output bytes/headers unchanged vs. the happy path (CR1).
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). 0 patch, 0 decision-needed, 4 deferred, 1 dismissed. Blind Hunter: no real defects. Acceptance Auditor: all 4 ACs met, no violations._
+
+- [x] [Review][Defer] Caller does not abort on `ok=false` — throw→report pivot means a caller that ignores `ProjResult` ships a request with `x-routing-error` but no routing key [grpc-routing-meta/example/sender/unified_sender.cc:35] — deferred to **Story 1.4**: by design (kit reports, caller decides — AD-5 / SPEC §7); 1.4 wires the demo `Send` to surface `ok`/`x-routing-error`. Not reachable in the current demo (populated mask). Not a 1.1 defect.
+- [x] [Review][Defer] A message with 2+ required scalars emits duplicate `x-routing-error` headers; a single-value reader sees only the first [generated required branch] — deferred: unreachable in current protos (one required scalar each); `x-routing-error` value format is provisional/unratified (architecture Deferred). Revisit when a proto adds a 2nd required scalar or the format is frozen.
+- [x] [Review][Defer] `Issue::Overflow` declared but never produced — overflow reported only via the `x-process-context-overflow` sink header, not in `result.issues`, and never sets `ok=false` [src/common/proj_result.h:16 / src/common/process_context_emit.h] — deferred to **Story 1.2** (overflow→Issue plumbing): intentional per 1.1 scope.
+- [x] [Review][Defer] 9 of 10 sys3 required-scalar messages untested (only Submit05 driven) [grpc-routing-meta/example/tests/test_projection.cc] — deferred to test hardening (**Story 1.12**): all 10 are generated from one template; Submit05 covers the template logic; the getter-walk that differs is pre-existing, unchanged code.
+
+_Dismissed (1): missing-required still runs the full pctx projection and `x-routing-error` (~64 B) counts against the byte budget, which can flip a borderline overflow outcome — by design (report-don't-dictate still emits the full projection + budget signal); behaviorally correct, low._
 
 ## Dev Notes
 

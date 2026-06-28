@@ -75,9 +75,12 @@ CONTEXT.md         design summary + testable invariants
 example/
   proto/           metadata_options, process_context, sys1, sys2, sys3
   src/plugin/      protoc-gen-meta.cc        (codegen)
-  src/common/      url_encode, sha256, metadata_sink, process_context_emit, process_context_parser
+  src/common/      send, proj_result, common_headers, metadata_sink,
+                   process_context_emit, process_context_parser, url_encode, sha256
   sender/          unified_sender.cc         (one Send<>() for all systems)
   receiver/        receiver_verify.cc
-  tests/           test_projection.cc
+  tests/           test_projection, test_concurrency, bench_projection, grpc_smoke,
+                   negative/ (bad_*.proto compile-failure cases)
+  demo/            real-wire gRPC client+server (DEMO.md, run.sh)
   build.sh  CMakeLists.txt
 ```

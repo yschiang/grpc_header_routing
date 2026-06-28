@@ -16,6 +16,10 @@
 
 - **Kit `Send` for a non-projecting request type** → plugin hardening (no owning story yet). The plugin emits no `ProjectMeta` for a message with neither a `(routing.project)` scalar nor a `(routing.pctx)` field (`protoc-gen-meta.cc:186,210` skip), so `routingmeta::Send` would fail to instantiate for it with a confusing template error inside `send.h`. Not triggered today (every sys1/2/3 request projects something). If such a request type is ever introduced, emit a no-op `ProjectMeta` (keeps the one-Send-for-all claim literal) or a loud build-time diagnostic at the offending proto. Pre-existing plugin behavior, surfaced (not caused) by 1.4.
 
+## Deferred from: code review of 1-6-projectmeta-self-times-and-reports-duration (2026-06-28)
+
+- **Resolution-robust timing assertions** → Story 1.7 (bench). The 1.6 tests assert `duration.count() > 0`, which is fragile against `steady_clock` granularity (could round to 0 on a coarse clock; AC1 specifies `> 0`). Safe on all in-scope platforms (Linux CI ns-resolution; macOS dev host with sha256+url-encode work ≫ ~41 ns granularity). When 1.7 adds `bench_projection` with real timing assertions, use a resolution-robust check (e.g. assert the field was assigned vs a sentinel, or measure across many iterations). Revisit `> 0` if a coarse-clock platform (e.g. Windows) is ever in scope.
+
 ## Deferred from: code review of 1-3-one-coherent-routingmeta-namespace-resolved-by-adl (2026-06-28)
 
 - **Instantiate the `GrpcSink` + ADL path** → Story 1.9 (HR4 gRPC compile-smoke). After the namespace move, the design relies on ADL resolving the namespaced `ProjectMeta` for a `routingmeta::GrpcSink` argument, but no translation unit ever calls `ProjectMeta(req, grpcSink)` — only the `GrpcSink` class body is compile-smoked, and `build.sh` has no gRPC path. Pre-existing gap (not introduced by 1.3). When wiring the CI gRPC compile-smoke (AD-14/HR4), add a one-line compile-only instantiation under `#ifdef ROUTINGMETA_WITH_GRPC` (e.g. `if (false) { grpc::ClientContext c; routingmeta::GrpcSink s(&c); ProjectMeta(req, s); }`) so the ADL path the design depends on is actually exercised.

@@ -4,7 +4,7 @@ baseline_commit: b7ad9f91c79d4d3934e76eb2b7c39e61d57b17d6
 
 # Story 1.6: `ProjectMeta` self-times and reports `duration`
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -42,6 +42,16 @@ so that I get a per-call latency signal with no coupling to the kit.
   - [x] `cd grpc-routing-meta/example && ./build.sh` → links; `./build/test_projection` → `ALL TESTS PASSED`.
   - [x] `./build/unified_sender` → the per-call `duration=…ns` lines now show a NON-zero value (the empty-mask block's `-> ok=false … duration=…ns` is no longer `0ns`). Wire output (headers/digests/byte counts) byte-identical (CR1 — duration is in-process only, never a header).
   - [x] `grep -rn "steady_clock\|chrono::now\|::now()" src/common/send.h` → none (Send does not time — AC2). `grep -rn "printf\|cout\|log" src/common` → no kit logging (NFR7); the only prints are in the demo/tests.
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). 0 patch, 0 decision-needed, 1 deferred, 2 dismissed. Acceptance Auditor: PASS — 3/3 ACs, scope intact. Edge Case Hunter: every generated variant sets `duration` before its single return (sys1 1/1, sys2 5/5, sys3 10/10), no early-return skips it, `send.h` does not time, timing uses only locals (re-entrant). All reviewers agree: no shipping-code bug._
+
+- [x] [Review][Defer] The `duration.count() > 0` test assertion is clock-granularity-fragile [grpc-routing-meta/example/tests/test_projection.cc:55,208] — deferred to **Story 1.7** (bench owns rigorous timing). `> 0` encodes "timing ran" with no floor; on a coarse `steady_clock` it could round to 0. Safe on every in-scope platform — Linux CI (`steady_clock` = ns resolution, AD-14) and the macOS dev host (the asserted projections do sha256 + 14 url-encodes, ≫ the ~41 ns local granularity) — and AC1 literally specifies `> 0`. When 1.7 adds `bench_projection`, use resolution-robust timing checks; a future coarse-clock port (e.g. Windows, out of scope) would also revisit this.
+
+_Dismissed (2):_
+- _Blind Hunter "`Send` doesn't propagate `duration`" — false positive from a context-free review. `routingmeta::Send` is `FillCommon(rt, sink); return ProjectMeta(req, sink);` — it returns `ProjectMeta`'s `ProjResult` (with its timed `duration`) unchanged; the Edge Case Hunter and Acceptance Auditor (repo access) confirmed propagation, and `test_projection.cc:208` passes._
+- _"`assert` voids under `NDEBUG`" — pre-existing project-wide convention (the whole zero-test-deps harness is `assert`-based); `build.sh` compiles `-O2 -Wall` with no `-DNDEBUG`, so the asserts are live. Not introduced by 1.6._
 
 ## Dev Notes
 

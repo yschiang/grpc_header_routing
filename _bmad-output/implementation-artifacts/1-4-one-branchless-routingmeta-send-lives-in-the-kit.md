@@ -4,7 +4,7 @@ baseline_commit: f4a0c4af6f04e791073c5f53cc434bb12b16f704
 
 # Story 1.4: One branchless `routingmeta::Send` lives in the kit
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -48,6 +48,16 @@ so that all three systems go out one identical path and I own the abort/proceed 
   - [x] `./build/test_projection` → `ALL TESTS PASSED` (incl. the new Send guardrail).
   - [x] `./build/unified_sender` → prints the system blocks; the empty-sys3 block shows `x-routing-error: missing:x-mask-id` and a duration line; no crash/throw. The pre-existing blocks' digests are unchanged (CR1).
   - [x] `./build/receiver_verify` → digest OK.
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). 0 patch, 0 decision-needed, 1 deferred, 2 dismissed. Blind Hunter: no defects. Acceptance Auditor: PASS — 4/4 ACs, scope/wire intact. Edge Case Hunter verified ADL resolution, printf format correctness, no behavior change at the 5 pre-existing call sites, and the `GrpcSink` path soundness._
+
+- [x] [Review][Defer] Plugin silently skips `ProjectMeta` for a message that projects nothing (no `(routing.project)` scalar, no `(routing.pctx)` field) — kit `Send` would fail to instantiate for such a request [grpc-routing-meta/example/src/plugin/protoc-gen-meta.cc:186,210 (`if (projs.empty() && !FindCtx(d)) continue;`)] — deferred: not triggered by any current message (every sys1/2/3 request projects a scalar or contexts); pre-existing plugin behavior, not introduced by 1.4; outside 1.4's ACs. If a non-projecting request type is ever added, have the plugin emit a no-op `ProjectMeta` (so the single `Send` path stays universal) or a loud diagnostic. Logged to `deferred-work.md`.
+
+_Dismissed (2):_
+- _`[[nodiscard]]` on `ProjResult` — contradicts **CR2/AD-10** (the return MUST be ignorable by existing call sites) and the deliberate "report, don't dictate" design (SPEC §7). The caller-acts-on-result need is satisfied by the empty-mask demo + the guardrail test, not by forcing every send to read the result. (Raised and dismissed on the same grounds in the 1.2/1.3 reviews.)_
+- _No `static_assert` guarding a forgotten `*.proj.h` include at a `Send` call site — inherent to the AD-3/AD-4 ADL decoupling (a guard that named `ProjectMeta` would defeat the ADL that keeps the kit free of generated headers); the requirement is already documented in `send.h`'s header comment. Failure is a compile-time template error, not a runtime trap._
 
 ## Dev Notes
 

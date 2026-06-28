@@ -4,7 +4,7 @@ baseline_commit: dd5bd706de36f9312cd89528ca13a8a755e2d950
 
 # Story 1.7: `bench_projection` proves sub-millisecond
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -40,6 +40,18 @@ so that the "sub-ms / perf observed" claim (criterion H) is evidence, not assert
   - [x] `cd grpc-routing-meta/example && ./build.sh` → `bench_projection` builds and links alongside `unified_sender` / `receiver_verify` / `test_projection` (AC3).
   - [x] `./build/bench_projection` → prints 4 per-call lines (N=1, 2, 25, 60), all sub-ms, ends `BENCH PASSED`, exit 0 (AC1, AC2). `echo $?` → 0.
   - [x] Sanity-check the non-zero-exit contract: it is wired via the explicit `per_call_ns >= kBudgetNs` check + `return 1` (not `assert`). Confirm `./build/test_projection` still → `ALL TESTS PASSED` (no regression; bench is additive).
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter [diff-only] + Edge Case Hunter [diff+repo] + Acceptance Auditor [diff+spec+architecture], no shared context). 1 patch (comment-only), 0 decision-needed, 0 deferred, 4 dismissed. **Acceptance Auditor: PASS** — 3/3 ACs, no architecture violation, no scope creep; independently verified red (`kBudgetNs=1` → all 4 lines, `BENCH FAILED`, exit 1 via explicit `return`, not `assert`) and green (exit 0). **Edge Case Hunter: PASS** — reconstructed `guard=88000` by hand to verify every path (N=25 full digest = 28 items, N=60 overflow short-circuit = 3 items, non-blocking so `r.ok` stays true). **Blind Hunter: CONCERNS** — one Med (mean-not-max), addressed by the patch below._
+
+- [x] [Review][Patch] Header comment over-claimed "proves each call < 1 ms" — the gate checks the MEAN per-call (`total/kIters`), not the per-call max [grpc-routing-meta/example/tests/bench_projection.cc:2-9]. Reworded to state it proves the **mean** per-call sub-ms as criterion-H evidence ("perf observed"), NOT a per-call tail-latency SLA, with a `ponytail:` note: a per-call max/p99 gate would trip on OS scheduling noise (page faults), not projection cost → **flaky** — the mean-via-single-interval is the deliberate resolution-robust design 1.6's review mandated here. Same patch labels N=60 as the overflow short-circuit case (Edge Hunter L2). Comment-only — rebuilt, still green (`guard=88000`, exit 0).
+
+_Dismissed (4):_
+- _Blind L2 / Edge L1 "timed region includes `VectorSink` ctor/dtor" — real but conservative: both reviewers agree it only inflates the number (false-FAIL risk, never false-PASS), and a fresh sink per call is realistic (every real call owns its sink). The ~20× headroom absorbs it._
+- _Blind L3 "no warm-up iteration" — first-iter cold-cache cost is amortized across 2000 iters and biases only toward FAIL; the 20× headroom makes it immaterial._
+- _Edge L3 / Blind flakiness "1 ms vs ~3–49 µs" — ~20–26× headroom over a 7–75 ms total interval (≫ `steady_clock` granularity on the Linux/macOS matrix); only a pathologically oversubscribed runner sustaining 20×+ slowdown could false-fail. Gating on the mean (not max) keeps it non-flaky._
+- _Blind L4 "single uniform input shape per N" — YAGNI for an evidence bench: projection cost scales with context COUNT (varied 1/2/25/60, the criterion-H sizes); field-value-length variety is exercised by the byte/line-overflow tests in `test_projection.cc`. Not a worst-case latency proof, nor meant to be._
 
 ## Dev Notes
 
@@ -164,3 +176,4 @@ claude-opus-4-8[1m] (Amelia / Senior Software Engineer) — engineering delegate
 
 - 2026-06-28 — Story 1.7 drafted (create-story): `bench_projection` proves sub-ms for 1/2/25/60 contexts (FR7, BRIEF H); resolution-robust many-iteration timing closes the 1.6 deferral; explicit non-zero exit on breach; no new deps, wire untouched.
 - 2026-06-28 — Story 1.7 implemented (dev-story): NEW `tests/bench_projection.cc` + `build.sh` `[bench]` link line. Red (tiny budget → exit 1) then green (1 ms → exit 0); all 4 sizes sub-ms (max ~49 µs, ≈20× under budget) on the macOS dev host; `test_projection` still green. Resolution-robust averaging over `kIters=2000` resolves the 1.6 deferred timing item. Engineering by a subagent, independently re-verified in the main loop. Status → review.
+- 2026-06-28 — Story 1.7 code review (3 adversarial subagents, no shared context): Auditor PASS 3/3 ACs, Edge PASS (hand-verified guard=88000 path-by-path), Blind CONCERNS (mean-not-max). 1 comment-only patch (scope the claim to mean-per-call criterion-H evidence + label N=60 overflow; `ponytail:` note on why a max/p99 gate would be flaky), 4 dismissed, 0 deferred. Rebuilt green. Status → done.

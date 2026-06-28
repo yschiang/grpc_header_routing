@@ -1,11 +1,18 @@
 // =============================================================================
 // bench_projection — sub-millisecond micro-bench for the generated ProjectMeta.
 // Times the sys1 process-context projection for N in {1,2,25,60} contexts and
-// proves each call stays under a 1 ms budget. Resolution-robust: averages a
-// loop of kIters calls inside ONE steady_clock interval (a single call is too
-// short to time against clock granularity). Fresh sink each iteration (the sink
-// accumulates headers, so reuse would change behavior). No test deps; standalone
-// main, non-zero exit on budget breach so it gates in the build.
+// proves the MEAN per-call time stays well under a 1 ms budget. Resolution-robust:
+// averages a loop of kIters calls inside ONE steady_clock interval (a single call
+// is too short to time against clock granularity). This is criterion-H evidence
+// ("sub-ms / perf observed"), not a per-call tail-latency SLA.
+//   ponytail: gates on the mean per-call (robust, non-flaky); a per-call max/p99
+//   gate would trip on OS scheduling noise, not projection cost — add only if a
+//   real tail-latency guarantee is ever required.
+// N=60 > kMaxContexts(25) deliberately trips the overflow short-circuit (no digest
+// / per-context emit), so its per-call time is LOWER than N=25 — the heaviest
+// in-budget case (full encode + sha256 + 25 emits). Fresh sink each iteration (the
+// sink accumulates headers, so reuse would change behavior). No test deps;
+// standalone main, non-zero exit on budget breach so it gates in the build.
 // =============================================================================
 #include <chrono>
 #include <cstddef>

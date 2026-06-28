@@ -11,7 +11,7 @@
 #   PROTOC=$CONDA/bin/protoc PKG_CONFIG_PATH=$CONDA/lib/pkgconfig \
 #   DYLD_LIBRARY_PATH=$CONDA/lib CXX=clang++ ./run.sh
 # =============================================================================
-set -uo pipefail
+set -euo pipefail   # -e: a failed build.sh/protoc/compile aborts — never run stale binaries
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"   # grpc-routing-meta/example
 cd "$ROOT"
@@ -48,6 +48,7 @@ GRPC_FLAGS="$(pkg-config --cflags --libs grpc++ protobuf)"
 # DYLD/LD_LIBRARY_PATH (macOS SIP strips DYLD_* for system-bash-spawned procs);
 # mirrors build.sh's -Wl,-rpath for protobuf.
 RPATHS="-Wl,-rpath,$(pkg-config --variable=libdir grpc++) -Wl,-rpath,$(pkg-config --variable=libdir protobuf)"
+rm -f "$BIN/grpc_server" "$BIN/grpc_client"  # belt-and-braces: no stale binary survives a failed compile
 for app in grpc_server grpc_client; do
   echo "[cc  ] $app"
   # shellcheck disable=SC2086
@@ -61,11 +62,18 @@ done
 SRV_LOG="$(mktemp)"; CLI_LOG="$(mktemp)"
 "./$BIN/grpc_server" "$ADDR" >"$SRV_LOG" 2>&1 &
 SRV_PID=$!
-trap 'kill "$SRV_PID" 2>/dev/null; wait "$SRV_PID" 2>/dev/null' EXIT
+# `|| true` on kill/wait so the trap can't trip `set -e` (wait on a SIGTERM'd server
+# returns 143) and clobber the script's real exit code.
+trap 'kill "$SRV_PID" 2>/dev/null || true; wait "$SRV_PID" 2>/dev/null || true; rm -f "$SRV_LOG" "$CLI_LOG"' EXIT
+# Readiness via the server's own LISTENING line (portable; no /dev/tcp) and bail if it
+# died first — a port already in use makes BuildAndStart return null and the server exit,
+# so we must NOT mistake a foreign listener for ours.
 for _ in $(seq 1 50); do
-  (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null && { exec 3>&- 3<&-; break; }
+  kill -0 "$SRV_PID" 2>/dev/null || { echo "server exited before listening (port $PORT in use / bind failed):" >&2; cat "$SRV_LOG" >&2; exit 1; }
+  grep -q "LISTENING on" "$SRV_LOG" && break
   sleep 0.1
 done
+grep -q "LISTENING on" "$SRV_LOG" || { echo "server did not report LISTENING within timeout" >&2; cat "$SRV_LOG" >&2; exit 1; }
 
 "./$BIN/grpc_client" "$ADDR" >"$CLI_LOG" 2>&1 || true
 echo "------------------ server ------------------"; cat "$SRV_LOG"
@@ -73,11 +81,11 @@ echo "------------------ client ------------------"; cat "$CLI_LOG"
 
 # 6) self-check oracle: good case ACCEPTed AND tamper case REJECTed
 ok=1
-grep -q "digest check: OK -> ACCEPT" "$SRV_LOG" || { echo "FAIL: good case did not ACCEPT"; ok=0; }
-grep -q "digest MISMATCH.*-> REJECT"  "$SRV_LOG" || { echo "FAIL: tamper case did not REJECT"; ok=0; }
-grep -q "REJECTED:"                    "$CLI_LOG" || { echo "FAIL: client did not observe the rejection"; ok=0; }
+grep -qE "digest check: OK.*-> ACCEPT" "$SRV_LOG" || { echo "FAIL: good case did not ACCEPT"; ok=0; }
+grep -qE "digest MISMATCH.*-> REJECT"  "$SRV_LOG" || { echo "FAIL: tamper case did not REJECT"; ok=0; }
+grep -q  "REJECTED:"                    "$CLI_LOG" || { echo "FAIL: client did not observe the rejection"; ok=0; }
 if [ "$ok" = 1 ]; then
-  echo "DEMO PASSED — real-wire projection verified; header<->body drift rejected"
+  echo "DEMO PASSED — real-wire projection verified; projected-header drift rejected"
 else
   echo "DEMO FAILED"; exit 1
 fi

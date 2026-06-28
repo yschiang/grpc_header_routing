@@ -4,7 +4,7 @@ baseline_commit: 993ab9e03745ad15be32682f0bfcf6819febc5b6
 
 # Story 2.1: Real-wire gRPC demo (live client + server carrying projected routing-meta)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -49,6 +49,24 @@ This upgrades **HR4** (Story 1.9 / `tests/grpc_smoke.cc`), which is deliberately
   - [x] Assert good-case `accept` present AND tamper-case `reject` present; exit non-zero otherwise.
 - [x] **Task 5 — `demo/DEMO.md` (AC: 4)** — purpose, prereqs, `./run.sh`, annotated expected output, HR4 relation.
 - [x] **Task 6 — optional CI step** — note (do not require) a real-wire CI step that runs `demo/run.sh` on the cell that already has `libgrpc++-dev`, complementing the HR4 compile-smoke. Flag for the team; keep it a separate opt-in step. **(Flagged, intentionally NOT wired — task said do-not-require; see Completion Notes for the recommendation.)**
+
+### Review Findings
+
+_Code review 2026-06-29 (8f0350c vs 993ab9e). 3 layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). 8 patch, 1 defer, 1 dismissed._
+
+- [x] [Review][Patch] **run.sh stale-binary fake-pass** — `set -uo pipefail` lacks `-e`; `./build.sh`, `protoc`, and the `$CXX` compile loop have no `|| exit`. A compile failure leaves last run's binaries in `build/` and the oracle still greps `DEMO PASSED`, defeating the fail-loud self-check (AC3 / criterion C). **[blind+edge+auditor, HIGH]** `demo/run.sh` build steps
+- [x] [Review][Patch] **No RPC deadline / no script timeout → indefinite hang** — every `grpc::ClientContext` lacks `set_deadline`; `run.sh` has no `timeout`. A server that accepts TCP but wedges hangs CI instead of failing. **[blind+edge, MED]** `demo/grpc_client.cc` (all ctx), `demo/run.sh` client call
+- [x] [Review][Patch] **Readiness poll accepts any listener / bind-failure undetected** — if the port is already held, our server exits but `/dev/tcp` succeeds against the foreign listener; no `kill -0 $SRV_PID` / post-loop success check (fold in: grep server log for `LISTENING` as the readiness signal, covers `/dev/tcp`-unavailable). **[edge, MED]** `demo/run.sh` poll loop
+- [x] [Review][Patch] **Server discards expected/actual digest** — AC1 says print accept/reject "with the expected/actual digest"; `VerifyResult.expected_digest`/`actual_digest` are computed then dropped (receiver_verify prints both). **[auditor, MED]** `demo/grpc_server.cc:VerifyFromMetadata`
+- [x] [Review][Patch] **"header↔body drift" wording overstated** — the gate verifies projected-context-headers vs the digest header (integrity), not a body-vs-header re-derivation; align DEMO.md + server comment to the kit's integrity-not-security framing (story 1.15). **[blind, LOW]** `demo/DEMO.md`, `demo/grpc_server.cc`
+- [x] [Review][Patch] **`Ref()` may build `std::string(nullptr, 0)`** — empty metadata value → `string_ref::data()` can be null (UB by precondition; works on libc++/libstdc++). Guard `r.size() ? … : std::string()`. **[edge, LOW]** `demo/grpc_server.cc:Ref`
+- [x] [Review][Patch] **mktemp logs leaked** — EXIT trap kills/reaps the server but never `rm`s `SRV_LOG`/`CLI_LOG`. **[blind+edge, LOW]** `demo/run.sh` trap
+- [x] [Review][Patch] **Tamper loop silent no-op if 0 context headers** — not reachable as written (2 ctx hardcoded), latent if edited to overflow/empty; assert `tampered` actually fired. **[edge, LOW]** `demo/grpc_client.cc` case 4
+- [x] [Review][Defer] **Server last-wins on duplicate single-valued metadata** `[demo/grpc_server.cc]` — deferred, generic-receiver hardening beyond this demo's scope (the client sends exactly one of each).
+
+_Dismissed (1): AC2(c) overflow log wording ("no digest provided") differs from spec text but behavior matches intent — cosmetic._
+
+_**All 8 patches applied + verified 2026-06-29.** Demo re-run EXIT 0 (DEMO PASSED). The HIGH stale-binary fix is proven by a negative test: a deliberately broken compile now exits 1 with the compiler error and NO "DEMO PASSED" (previously would have fake-passed on stale binaries). A second self-inflicted bug found during verification — `set -e` + the EXIT trap's `wait` on a SIGTERM'd server returned 143 — was also fixed (`|| true` in the trap). Format gate clean (17 files); core kit binaries unaffected._
 
 ## Dev Notes
 
@@ -142,3 +160,4 @@ Modified:
 ## Change Log
 
 - 2026-06-29 — Implemented Story 2.1 real-wire gRPC demo (client + server + run.sh + DEMO.md); verified live (DEMO PASSED), no core regression, gRPC opt-in. Status → review.
+- 2026-06-29 — Code review (3 layers): 8 patch / 1 defer / 1 dismissed. Applied all 8 — fail-loud `set -e` + drop-stale-binaries (proven by negative test), RPC deadlines, readiness-via-LISTENING + bind-failure detection, print expected/actual digest (AC1), integrity wording, `Ref()` empty-value guard, trap log cleanup + `set -e`-safe trap, tamper assert. Status → done.

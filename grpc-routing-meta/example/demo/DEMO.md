@@ -11,9 +11,11 @@ digest gate on what arrives.
 1. **Body-authoritative projection survives a real hop.** The client attaches headers
    with the kit's normal two lines — `GrpcSink sink(&ctx); Send(req, rt, sink);` — and
    the server reads them back off `grpc::ServerContext::client_metadata()`.
-2. **The digest gate catches header↔body drift on the wire.** A deliberately tampered
-   context (one value mutated after projection, digest header left intact) is **rejected**
-   by the server (`DATA_LOSS`) — exactly the `receiver_verify.cc` check, now over gRPC.
+2. **The digest gate catches drift of the projected context headers.** A deliberately
+   tampered context (one value mutated after projection, the digest header left intact)
+   no longer matches its digest, so the server **rejects** it (`DATA_LOSS`) — exactly the
+   `receiver_verify.cc` check, now over gRPC. This is a header-vs-digest *integrity* check,
+   not security: a sender that recomputes the digest would pass (see story 1.15).
 3. **Failure-as-data is observable on the wire.** Missing-required surfaces
    `x-routing-error` (still delivered); overflow surfaces `x-process-context-overflow`
    with no digest — both non-blocking, the server logs and accepts (it reports; the
@@ -55,19 +57,19 @@ is REJECTed, exiting non-zero on regression.
 [server] sys1.Calculate corr=CORR-LOT01-001 count=2 contexts=2
            LotID=LOT01 ChamberId=CH-A RecipeID=RCP_ETCH_V3     # contexts reconstructed off the wire
            LotID=LOT02 ChamberId=CH-B RecipeID=RCP_ETCH_V3
-[server] sys1.Calculate digest check: OK -> ACCEPT             # (1) good case verifies
+[server] sys1.Calculate digest check: OK (sha256:…) -> ACCEPT   # (1) good case verifies
 [server] sys1.Calculate corr=CORR-LOT01-001 count=60 contexts=0
 [server] sys1.Calculate x-process-context-overflow: true; no digest -> ACCEPT (non-blocking)  # (3) overflow
 [server] sys3.Submit05  corr=CORR-sys3-005 count=0 contexts=0
 [server] sys3.Submit05  x-routing-error: missing:x-mask-id -> ACCEPT (surfaced, non-blocking) # (3) missing req
 [server] sys3.Submit05  no digest provided -> ACCEPT (count=0)
-[server] sys1.Calculate digest MISMATCH (...projection drift) -> REJECT                       # (2) tamper rejected
+[server] sys1.Calculate digest MISMATCH expected=sha256:… actual=sha256:… -> REJECT           # (2) tamper rejected
 ------------------ client ------------------
 [client] sys1 good (2 ctx)              ok=true  issues=0 duration=...ns  rpc=OK
 [client] sys1 overflow (60 ctx)         ok=true  issues=1 duration=...ns  rpc=OK        # Issue{Overflow}, ok stays true
 [client] sys3 empty-mask (missing req)  ok=false issues=1 duration=...ns  rpc=OK        # ok=false, still delivered
 [client] sys1 TAMPERED (expect reject)  ok=true  issues=0 ... rpc=REJECTED: digest mismatch: header/body projection drift
-DEMO PASSED — real-wire projection verified; header<->body drift rejected
+DEMO PASSED — real-wire projection verified; projected-header drift rejected
 ```
 
 ## The four cases

@@ -12,6 +12,7 @@
 // =============================================================================
 #include <grpcpp/grpcpp.h>
 
+#include <chrono>
 #include <cstdio>
 #include <string>
 
@@ -33,6 +34,11 @@ void fillCtx(common::v1::ProcessContext* c, const char* lot, const char* chamber
   c->set_part_id("PART-A");
   c->set_stage_id("ETCH");
   c->set_operation_no("OP100");
+}
+
+// Bound every RPC so a wedged/half-initialized server fails fast instead of hanging.
+void deadline(grpc::ClientContext& ctx) {
+  ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
 }
 
 void report(const char* label, const routingmeta::ProjResult& r, const grpc::Status& st) {
@@ -57,6 +63,7 @@ int main(int argc, char** argv) {
     fillCtx(req.add_contexts(), "LOT01", "CH-A");
     fillCtx(req.add_contexts(), "LOT02", "CH-B");
     grpc::ClientContext ctx;
+    deadline(ctx);
     routingmeta::GrpcSink sink(&ctx);
     auto r = routingmeta::Send(req, rt, sink);
     common::v1::Ack ack;
@@ -71,6 +78,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 60; ++i)
       fillCtx(req.add_contexts(), ("LOT" + std::to_string(i)).c_str(), "CH-A");
     grpc::ClientContext ctx;
+    deadline(ctx);
     routingmeta::GrpcSink sink(&ctx);
     auto r = routingmeta::Send(req, rt, sink);
     common::v1::Ack ack;
@@ -82,6 +90,7 @@ int main(int argc, char** argv) {
   {
     sys3::v1::Submit05Request req;  // mask_id left empty (the bug)
     grpc::ClientContext ctx;
+    deadline(ctx);
     routingmeta::GrpcSink sink(&ctx);
     auto r = routingmeta::Send(req, routingmeta::Runtime{"CORR-sys3-005", "F18", "LITHO01"}, sink);
     common::v1::Ack ack;
@@ -100,6 +109,7 @@ int main(int argc, char** argv) {
     routingmeta::FillCommon(rt, probe);
     auto r = routingmeta::ProjectMeta(req, probe);  // same projection, captured for tampering
     grpc::ClientContext ctx;
+    deadline(ctx);
     bool tampered = false;
     for (const auto& kv : probe.items) {
       if (kv.first == "x-process-context" && !tampered) {
@@ -108,6 +118,10 @@ int main(int argc, char** argv) {
       } else {
         ctx.AddMetadata(kv.first, kv.second);
       }
+    }
+    if (!tampered) {  // guards a future edit that drops contexts (overflow/count=0)
+      std::fprintf(stderr, "tamper case found no x-process-context to mutate\n");
+      return 2;
     }
     common::v1::Ack ack;
     auto st = sys1->Calculate(&ctx, req, &ack);

@@ -6,7 +6,9 @@
 // receiver_verify.cc does in-process, now over an actual wire hop. It implements
 // only the two RPCs the demo client calls; the rest stay default-UNIMPLEMENTED.
 //
-// Policy shown: the digest gate REJECTS only on header<->body drift (DATA_LOSS).
+// Policy shown: the digest gate REJECTS only when the projected context headers no
+// longer match their digest header (integrity drift, DATA_LOSS) — it is a header-vs-
+// digest integrity check, not security and not a body re-derivation (see story 1.15).
 // Missing-required and overflow are surfaced (logged) but non-blocking (ACCEPT) —
 // the kit reports, the receiver decides (SPEC §7 / NFR7).
 // =============================================================================
@@ -22,10 +24,14 @@
 
 namespace {
 
-std::string Ref(const grpc::string_ref& r) { return std::string(r.data(), r.size()); }
+// data() may be null for a zero-length string_ref — std::string(nullptr, 0) is UB by
+// precondition, so guard the empty case.
+std::string Ref(const grpc::string_ref& r) {
+  return r.size() ? std::string(r.data(), r.size()) : std::string();
+}
 
 // Pull the projected headers off the wire and re-run the digest gate. OK on a
-// clean or absent-digest path; DATA_LOSS only on actual header<->body drift.
+// clean or absent-digest path; DATA_LOSS only on projected-header vs digest drift.
 grpc::Status VerifyFromMetadata(grpc::ServerContext* ctx, const char* rpc) {
   std::vector<std::string> contexts;  // repeated x-process-context, in arrival order
   std::string digest, corr, count, overflow, routing_error;
@@ -66,9 +72,11 @@ grpc::Status VerifyFromMetadata(grpc::ServerContext* ctx, const char* rpc) {
   } else {
     auto vr = routingmeta::VerifyDigest(contexts, digest);
     if (vr.ok) {
-      std::printf("[server] %-14s digest check: OK -> ACCEPT\n", rpc);
+      std::printf("[server] %-14s digest check: OK (%s) -> ACCEPT\n", rpc,
+                  vr.actual_digest.c_str());
     } else {
-      std::printf("[server] %-14s digest MISMATCH (%s) -> REJECT\n", rpc, vr.error.c_str());
+      std::printf("[server] %-14s digest MISMATCH expected=%s actual=%s -> REJECT\n", rpc,
+                  vr.expected_digest.c_str(), vr.actual_digest.c_str());
       out = grpc::Status(grpc::StatusCode::DATA_LOSS, vr.error);
     }
   }

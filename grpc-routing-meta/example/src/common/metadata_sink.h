@@ -4,6 +4,10 @@
 // uses GrpcSink wrapping a grpc::ClientContext). It also tracks the running total
 // metadata size using gRPC's own accounting, so the size guard in
 // process_context_emit.h can keep the WHOLE projection under the gRPC limit.
+//
+// Re-entrancy invariant (AD-12/NFR5): the sink is per-call, caller-owned state and
+// ProjectMeta holds no shared mutable state, so concurrent calls on DISTINCT sinks
+// are safe without locks. Proven by tests/test_concurrency.cc under ThreadSanitizer.
 #pragma once
 #include <cstddef>
 #include <string>

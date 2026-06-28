@@ -60,10 +60,12 @@ jobs:
             $(pkg-config --cflags grpc++) tests/grpc_smoke.cc
       - name: concurrency race gate (HR3, ThreadSanitizer)
         # AD-12/NFR5 re-entrancy proof: 8 threads share one immutable request, each
-        # projects into its own sink; TSan exits non-zero on any data race. Gated to
-        # one representative cell (precedent: the gRPC compile-smoke is single-cell);
-        # clang++ has the most mature TSan. The functional run is also matrix-wide via
-        # ./build/test_concurrency in the self-checks step.
+        # projects into its own sink; TSan exits non-zero on any data race. The
+        # expensive sanitizer runs in ONE representative cell (clang++ has the most
+        # mature TSan); the cheap functional equality run is matrix-wide via
+        # ./build/test_concurrency in the self-checks step above. (TSan instruments
+        # ProjectMeta's own TUs; libprotobuf is linked un-instrumented, but req is
+        # const after construction — const reads only — so that path is race-free.)
         if: matrix.cxx == 'clang++' && matrix.protobuf == '3.21.12'
         working-directory: grpc-routing-meta/example
         env:
@@ -71,7 +73,7 @@ jobs:
           LD_LIBRARY_PATH: ${{ env.PREFIX }}/lib
           TSAN_OPTIONS: halt_on_error=1
         run: |
-          "$CXX" -std=c++17 -fsanitize=thread -pthread -O1 -g \
+          "$CXX" -std=c++17 -fsanitize=thread -fno-omit-frame-pointer -pthread -O1 -g \
             tests/test_concurrency.cc build/generated/*.pb.cc build/generated/*.proj.cc \
             -I build/generated -I src -I "$(pkg-config --variable=includedir protobuf)" \
             -L "$(pkg-config --variable=libdir protobuf)" -lprotobuf \

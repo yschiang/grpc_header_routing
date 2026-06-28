@@ -4,7 +4,7 @@ baseline_commit: 18ccfc3
 
 # Story 1.14: Thread-safe, re-entrant projection
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -93,7 +93,7 @@ Re-entrancy is already TRUE — this story makes it (a) explicit as a documented
 - [Source: grpc-routing-meta/example/src/common/metadata_sink.h] — `MetadataSink`/`VectorSink` per-instance state (no global).
 - [Source: grpc-routing-meta/example/src/plugin/protoc-gen-meta.cc:176,187,197-212] — emitted ProjectMeta preamble (doc surface for Task 1).
 - [Source: grpc-routing-meta/example/build.sh:104-107] — test build wiring (Task 3 mirror).
-- [Source: grpc-routing-meta/example/.github/workflows/ci.yml:43-59] — self-check / gRPC-smoke steps (TSan gate mirror).
+- [Source: .github/workflows/ci.yml:43-60] — self-check / gRPC-smoke steps (TSan gate mirror); CI lives at the repo root, not under `example/`.
 
 ### Latest tech notes
 No external research. `std::thread`/`std::atomic` (C++17 stdlib), `-pthread`, and clang/gcc `-fsanitize=thread` (ThreadSanitizer) are standard. macOS clang TSan verified available on the dev host. No new deps.
@@ -130,3 +130,18 @@ claude-opus-4-8[1m] (engineering subagent under Amelia/dev-story — interrupted
 
 - 2026-06-28 — Story 1.14 drafted (create-story): document + prove `ProjectMeta` re-entrancy (AD-12/NFR5/HR3). Verified no shared mutable state (locals + per-call sink; every `static` is `static const`). Adds a plugin emitted-preamble invariant comment, a new `tests/test_concurrency.cc` (N×M projections byte-equal to the single-thread baseline, atomic mismatch flag), a `build.sh` functional run (`-pthread`), and a CI ThreadSanitizer gate; local macOS TSan run records the dev-host proof. No wire/projection change — comment + test + CI only (CR1/AD-9 preserved).
 - 2026-06-28 — Story 1.14 implemented (dev-story): all 4 tasks done. Plugin emitted-preamble invariant comment (`.h`+`.cc`, comment-only), new `tests/test_concurrency.cc` (8×2000), `build.sh` `-pthread` build, CI self-check + single-cell TSan gate. Build links, `[test] test_concurrency` → `CONCURRENCY TEST PASSED`; local ThreadSanitizer run clean (exit 0, no race); `test_projection` `ALL TESTS PASSED`; `receiver_verify` digest UNCHANGED (`efafba16…`); bench PASSED. (Dev-story subagent interrupted after edits; main loop completed verification.) No drift — zero emitted bytes changed. Status → review.
+- 2026-06-28 — Story 1.14 code review (3 adversarial reviewers, no shared context): Acceptance Auditor + Edge Case Hunter PASS — AC1/AC2 MET, AD-12/HR3 discharged, wire frozen verified. Edge Case Hunter **proved the TSan gate catches a race**: injecting a `static` counter into a scratch copy made TSan report a data race (exit 134) — the gate is not a no-op. Fixes applied: (1) Blind Hunter [HIGH→robustness] — the functional oracle was gated on `assert` (a `-DNDEBUG` build would no-op it); replaced with an explicit `if (mismatch) return 1;` exit-code gate. (2) Blind [Low] — added `-fno-omit-frame-pointer` to the TSan flags. (3) Blind/Edge [Med] — scoped the claim to "zero runtime-metadata bytes" and noted TSan doesn't instrument libprotobuf (req is const-after-construction, const reads only). (4) Acceptance [Low] — corrected the CI comment's false "gRPC smoke is single-cell" precedent; added the re-entrancy invariant to `metadata_sink.h` (committed hand-written doc surface, closes AC1 discoverability); fixed a stale References path. Dismissed with cause: TSan under-link worry (metadata_sink.h is header-only, local TSan linked+ran fine); sys1-only coverage (template identical across systems). Rebuilt: functional `exit=0`, local TSan clean (with new flags), digest still `efafba16…`. Status → done.
+
+## Senior Developer Review (AI)
+
+**Date:** 2026-06-28 · **Outcome:** Approve (1 robustness + 4 Low fixed, no remaining High/Med). Three independent adversarial reviewers, no shared context.
+
+- **Acceptance Auditor (spec/arch):** AC1 MET (no shared mutable state verified line-by-line; invariant documented at every generated entrypoint + now `metadata_sink.h`), AC2 MET (N×M equality oracle + genuinely-wired, locally-reproduced TSan gate), AD-12/HR3 fully discharged, AD-9/CR1 wire frozen (digest `efafba16…`), bookkeeping accurate. Lows: false CI precedent comment (fixed), stale References path (fixed), AC1 doc-surface thinness (fixed via `metadata_sink.h`).
+- **Edge Case Hunter (repo + build + TSan):** Reproduced build + functional + local TSan clean; digest unchanged; `[neg ]` gate untouched. **Adversarially proved the gate works** — injected a `static` race → TSan reported it (exit 134). Confirmed protobuf const-access is race-free for this proto (no lazy/arena; baseline warms global init before spawn) and `metadata_sink.h` is header-only (TSan link sound). No High/Med.
+- **Blind Hunter (diff-only):** HIGH — `assert`-gated oracle no-ops under `-DNDEBUG` (**fixed**: explicit `return 1`). Med — TSan can't see libprotobuf; "zero emitted-byte" imprecise (**fixed**: claim scoped). Lows — `-fno-omit-frame-pointer` (**fixed**), oracle-overclaim wording (**fixed**). Confirmed `constexpr M` no-capture is valid C++17, atomic sync correct, plugin comment-only, and the test catches an in-TU `static` regression.
+
+### Action Items
+- [x] [AI-Review][High] Replace `assert(!mismatch)` with an explicit `if (mismatch) return 1;` exit-code gate — done in `tests/test_concurrency.cc`.
+- [x] [AI-Review][Low] Add `-fno-omit-frame-pointer` to the CI TSan flags — done in `.github/workflows/ci.yml`.
+- [x] [AI-Review][Med] Scope the re-entrancy/TSan claim (runtime-metadata bytes; libprotobuf un-instrumented) in the test header + CI comment — done.
+- [x] [AI-Review][Low] Document the invariant in `metadata_sink.h`; fix the CI false-precedent comment + stale References path — done.

@@ -2,12 +2,14 @@
 // test_concurrency — proves ProjectMeta is re-entrant (Story 1.14, AD-12/NFR5,
 // HR3). One immutable request is read concurrently by N threads; each thread
 // projects into its OWN VectorSink and must reproduce a single-threaded baseline
-// byte-for-byte. No locks anywhere: if ProjectMeta touched shared mutable state,
-// this fails the equality oracle and/or trips ThreadSanitizer (CI race gate).
-// Plain asserts, zero test deps — stdlib <thread>/<atomic> + -pthread only.
+// byte-for-byte. The equality oracle is a sufficient (not necessary) race signal
+// — divergence proves a bug; the actual race PROOF is ThreadSanitizer (CI gate +
+// the dev-host run). TSan covers ProjectMeta's own translation units; libprotobuf
+// is linked un-instrumented, but `req` is const after construction (const reads
+// only, no lazy/arena fields) so concurrent access is race-free by its contract.
+// Zero test deps — stdlib <thread>/<atomic> + -pthread only.
 // =============================================================================
 #include <atomic>
-#include <cassert>
 #include <cstdio>
 #include <string>
 #include <thread>
@@ -55,7 +57,12 @@ int main() {
   }
   for (auto& th : threads) th.join();
 
-  assert(!mismatch.load());                   // hard functional oracle
+  // Explicit exit-code gate (not assert — survives -DNDEBUG; this binary's exit
+  // status IS the CI/self-check signal).
+  if (mismatch.load()) {
+    std::fprintf(stderr, "CONCURRENCY MISMATCH: a thread's projection diverged from the baseline\n");
+    return 1;
+  }
   std::printf("CONCURRENCY TEST PASSED\n");
   return 0;
 }

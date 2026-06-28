@@ -14,7 +14,7 @@ namespace routingmeta {
 
 struct Issue {
   enum Kind { MissingRequired, Overflow };
-  Kind kind;
+  Kind kind{};       // value-init: a default-constructed Issue is deterministic, never UB
   std::string key;   // MissingRequired: the projected header key (e.g. "x-mask-id")
 };
 

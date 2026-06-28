@@ -31,7 +31,7 @@ is a projection, it cannot drift from the body (and §5.3 lets a verifier prove 
 | `x-tool-id` | common | runtime / body | always |
 | `x-process-context-count` | pctx | decimal `0..N` = body `repeated` size | always |
 | `x-process-context-format` | pctx | `urlencoded-query-string-v1` (constant) | always |
-| `x-process-context-digest` | pctx | `sha256:` + 64 hex (§5.3) | iff count>0 and not overflow |
+| `x-process-context-digest` | pctx | `sha256:` + 64 hex (§5.3) | iff count>0, not overflow, and the sender requested it (`emit_digest`, default yes) |
 | `x-process-context` | pctx | one canonical context (§5.1), repeated | iff count>0 and not overflow |
 | `x-process-context-overflow` | pctx | `true` | iff overflow (§5.4) |
 | `x-mask-id` | scalar | URL-encoded body scalar | sys3 only, iff source non-empty |
@@ -83,10 +83,14 @@ the sender MUST emit count + format only — **no** digest, **no** context lines
 
 ### 5.3 Digest — integrity, not security
 
-When context lines are emitted, the sender MUST emit
-`x-process-context-digest = "sha256:" + SHA256_hex(C)`, where `C` is the emitted
-`x-process-context` values joined by `\n` (newline) in emission order. The verifier MUST
-recompute and compare.
+When context lines are emitted, the sender emits
+`x-process-context-digest = "sha256:" + SHA256_hex(C)` **by default**, where `C` is the emitted
+`x-process-context` values joined by `\n` (newline) in emission order. Emission is a per-call
+sender choice: `ProjectMeta(req, sink, emit_digest)` (default `true`) — passing `false` omits
+the digest while still emitting the context lines. The verifier verifies **if present**: when
+`x-process-context-digest` is present it MUST recompute and compare and reject on mismatch; when
+it is **absent** the verifier MUST treat it as "not verified", **not** as drift, and accept.
+(See ADR 0002.)
 
 The digest is an **integrity** check, **not** a security control. It detects header/body
 inconsistency from a sender bug, projection-version skew between an independently-deployed

@@ -116,7 +116,7 @@ sys3 sys3.layout.submit ── domain scalar + 空骨架
 | **Build(codegen)** | annotation 寫錯:key 重複、`(routing.project)` 放在 repeated 底下 | `protoc --meta_out` **直接失敗、生不出來** |
 | **Run(sender)** | `required` 的 scalar 沒填 | 回報 `ProjResult{ok=false, MissingRequired}` 並發 `x-routing-error: missing:<key>`(**不 throw**、不送空值);caller 依 `issues` 決定 |
 | **Run(sender)** | metadata 太大(>7 KB)會被 APISIX/HTTP2 默默截斷 | 改發**顯式** `x-process-context-overflow: true` |
-| **Receiver** | header / body 漂移 | 用 `x-process-context-digest` **重算比對**,不符即 reject |
+| **Receiver** | header / body 漂移 | **有 digest 才驗**:`x-process-context-digest` 在就重算比對、不符即 reject;不在就跳過(不算漂移)。預設帶,`ProjectMeta(req, sink, false)` 可逐次關 |
 
 digest 在 **sender 端**就算好、投影也在 sender 端產生 —— 任何不一致**在來源就被 capture**,
 不會跑到 gateway 或 backend 才默默壞掉。把「傳輸層悶掉」變成「應用層看得到的旗標」。

@@ -20,7 +20,7 @@ have="$("$CF" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -
 }
 
 # Hand-written sources only; generated code lives under build/ and is never listed.
-FILES=$(find receiver sender src tests -type f \( -name '*.cc' -o -name '*.h' \) | sort)
+FILES=$(find receiver sender src tests demo -type f \( -name '*.cc' -o -name '*.h' \) | sort)
 
 if [ "${1:-}" = "fix" ]; then
   $CF -i $FILES

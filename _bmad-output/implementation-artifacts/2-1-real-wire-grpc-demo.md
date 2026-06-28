@@ -1,6 +1,10 @@
+---
+baseline_commit: 993ab9e03745ad15be32682f0bfcf6819febc5b6
+---
+
 # Story 2.1: Real-wire gRPC demo (live client + server carrying projected routing-meta)
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -27,24 +31,24 @@ This upgrades **HR4** (Story 1.9 / `tests/grpc_smoke.cc`), which is deliberately
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — gRPC stub generation (AC: 1, 2, 3)**
-  - [ ] In the demo build, run `protoc --grpc_out=<gen> --plugin=protoc-gen-grpc=$(which grpc_cpp_plugin)` for the service protos (`sys1.proto`, and `sys3.proto` if used) → `*.grpc.pb.cc/.h`. The message `*.pb.cc` already come from `build.sh`'s `--cpp_out`; reuse them.
-  - [ ] Keep this OUT of `build.sh`/`CMakeLists` core path — gRPC stays optional (NFR3). Put generation in `demo/run.sh` (or a `demo/build-demo.sh` it calls).
-- [ ] **Task 2 — server (`demo/grpc_server.cc`) (AC: 1)**
-  - [ ] Implement the generated `Sys1Service::Service` (+ `Sys3Service` if used). In each handler: iterate `ctx->client_metadata()` (a `std::multimap<grpc::string_ref, grpc::string_ref>`), collect every `x-process-context` value into a `std::vector<std::string>` (preserve arrival order), read `x-process-context-digest`, then `auto vr = routingmeta::VerifyDigest(contexts, digest);`.
-  - [ ] Print `LotID/...` via `routingmeta::ParseContext` for human-readable output (mirror `receiver_verify.cc`), then `accept`/`reject` per `vr.ok`. Return `common::v1::Ack`.
-  - [ ] Listen on `127.0.0.1:<port>` with `InsecureServerCredentials()`.
-- [ ] **Task 3 — client (`demo/grpc_client.cc`) (AC: 2)**
-  - [ ] Build channel `grpc::CreateChannel("127.0.0.1:<port>", grpc::InsecureChannelCredentials())` and the stub(s).
-  - [ ] For each demo call: construct request + `routingmeta::Runtime`, `GrpcSink sink(&ctx)`, `auto r = routingmeta::Send(req, rt, sink);`, invoke the RPC, print `r.ok / r.issues / r.duration` + the returned `Ack`.
-  - [ ] Tamper case: project into a `VectorSink`, mutate one `x-process-context` value, then manually `ctx.AddMetadata(...)` the mutated set (or add a second client path) so the server sees drift — document how in DEMO.md.
-- [ ] **Task 4 — `demo/run.sh` (AC: 3)**
-  - [ ] Probe `pkg-config --exists grpc++` and `command -v grpc_cpp_plugin`; clear hint + non-zero exit if missing.
-  - [ ] Generate stubs, compile server+client with `-DROUTINGMETA_WITH_GRPC $(pkg-config --cflags --libs grpc++ protobuf)`, reusing `../build/generated/*.pb.cc` (run `../build.sh` first if absent).
-  - [ ] Start server backgrounded, poll the port until ready (bounded retries — no fixed sleep), run client, capture output, kill server on exit (`trap`).
-  - [ ] Assert good-case `accept` present AND tamper-case `reject` present; exit non-zero otherwise.
-- [ ] **Task 5 — `demo/DEMO.md` (AC: 4)** — purpose, prereqs, `./run.sh`, annotated expected output, HR4 relation.
-- [ ] **Task 6 — optional CI step** — note (do not require) a real-wire CI step that runs `demo/run.sh` on the cell that already has `libgrpc++-dev`, complementing the HR4 compile-smoke. Flag for the team; keep it a separate opt-in step.
+- [x] **Task 1 — gRPC stub generation (AC: 1, 2, 3)**
+  - [x] In the demo build, run `protoc --grpc_out=<gen> --plugin=protoc-gen-grpc=$(which grpc_cpp_plugin)` for the service protos (`sys1.proto`, and `sys3.proto` if used) → `*.grpc.pb.cc/.h`. The message `*.pb.cc` already come from `build.sh`'s `--cpp_out`; reuse them.
+  - [x] Keep this OUT of `build.sh`/`CMakeLists` core path — gRPC stays optional (NFR3). Put generation in `demo/run.sh` (or a `demo/build-demo.sh` it calls).
+- [x] **Task 2 — server (`demo/grpc_server.cc`) (AC: 1)**
+  - [x] Implement the generated `Sys1Service::Service` (+ `Sys3Service` if used). In each handler: iterate `ctx->client_metadata()` (a `std::multimap<grpc::string_ref, grpc::string_ref>`), collect every `x-process-context` value into a `std::vector<std::string>` (preserve arrival order), read `x-process-context-digest`, then `auto vr = routingmeta::VerifyDigest(contexts, digest);`.
+  - [x] Print `LotID/...` via `routingmeta::ParseContext` for human-readable output (mirror `receiver_verify.cc`), then `accept`/`reject` per `vr.ok`. Return `common::v1::Ack`.
+  - [x] Listen on `127.0.0.1:<port>` with `InsecureServerCredentials()`.
+- [x] **Task 3 — client (`demo/grpc_client.cc`) (AC: 2)**
+  - [x] Build channel `grpc::CreateChannel("127.0.0.1:<port>", grpc::InsecureChannelCredentials())` and the stub(s).
+  - [x] For each demo call: construct request + `routingmeta::Runtime`, `GrpcSink sink(&ctx)`, `auto r = routingmeta::Send(req, rt, sink);`, invoke the RPC, print `r.ok / r.issues / r.duration` + the returned `Ack`.
+  - [x] Tamper case: project into a `VectorSink`, mutate one `x-process-context` value, then manually `ctx.AddMetadata(...)` the mutated set (or add a second client path) so the server sees drift — document how in DEMO.md.
+- [x] **Task 4 — `demo/run.sh` (AC: 3)**
+  - [x] Probe `pkg-config --exists grpc++` and `command -v grpc_cpp_plugin`; clear hint + non-zero exit if missing.
+  - [x] Generate stubs, compile server+client with `-DROUTINGMETA_WITH_GRPC $(pkg-config --cflags --libs grpc++ protobuf)`, reusing `../build/generated/*.pb.cc` (run `../build.sh` first if absent).
+  - [x] Start server backgrounded, poll the port until ready (bounded retries — no fixed sleep), run client, capture output, kill server on exit (`trap`).
+  - [x] Assert good-case `accept` present AND tamper-case `reject` present; exit non-zero otherwise.
+- [x] **Task 5 — `demo/DEMO.md` (AC: 4)** — purpose, prereqs, `./run.sh`, annotated expected output, HR4 relation.
+- [x] **Task 6 — optional CI step** — note (do not require) a real-wire CI step that runs `demo/run.sh` on the cell that already has `libgrpc++-dev`, complementing the HR4 compile-smoke. Flag for the team; keep it a separate opt-in step. **(Flagged, intentionally NOT wired — task said do-not-require; see Completion Notes for the recommendation.)**
 
 ## Dev Notes
 
@@ -108,8 +112,33 @@ Generated stubs go under `grpc-routing-meta/example/build/generated/` (gitignore
 
 ### Agent Model Used
 
+claude-opus-4-8[1m] (dev-story workflow)
+
 ### Debug Log References
+
+- Initial `run.sh` run failed at runtime: `dyld: libgrpc++.1.46.dylib not found` — macOS SIP strips `DYLD_LIBRARY_PATH` for system-bash-spawned processes. Fixed by baking `-Wl,-rpath,<grpc libdir>` + `<protobuf libdir>` into the binaries (mirrors `build.sh`'s protobuf rpath). Cross-platform (also correct on Linux/CI).
+- gRPC 1.46 headers warn under C++17 (`std::iterator` deprecated) — third-party noise, silenced per-build with `-Wno-deprecated-declarations`; demo code itself is warning-clean.
 
 ### Completion Notes List
 
+- **Verified live, end-to-end** (`demo/run.sh`, exit 0, `DEMO PASSED`): good case `digest check: OK -> ACCEPT`; tamper case `digest MISMATCH -> REJECT` (`DATA_LOSS`, client observes `REJECTED:`); overflow → `x-process-context-overflow: true`, no digest, ACCEPT(non-blocking); missing-required → `x-routing-error: missing:x-mask-id`, `ok=false`, still delivered. All four ACs satisfied over a real localhost channel.
+- **Reused, did not reinvent:** client uses `GrpcSink` + `routingmeta::Send`; server reuses `process_context_parser.h::VerifyDigest`/`ParseContext`. Only the tamper case hand-writes metadata (on purpose).
+- **No regression / no wire change (CR1):** all 5 core kit binaries still exit 0; demo only reads/writes existing projected headers; core `build.sh`/CMake untouched, gRPC stays opt-in (NFR3) — built only by `demo/run.sh`.
+- **Formatting:** added `demo/` to `format-check.sh` scope; demo C++ is clang-format-18.1.8-clean (17 files clean total).
+- **Task 6 (CI) — recommendation, not wired:** the team can add a real-wire CI step `working-directory: grpc-routing-meta/example; run: ./demo/run.sh` on the cell that already installs `libgrpc++-dev` (it self-checks and exits non-zero on regression), complementing the HR4 compile-smoke. Left opt-in per the task.
+- **Self-check oracle:** `demo/run.sh` is itself the gate — asserts good-ACCEPT + tamper-REJECT, exits non-zero on regression or absent gRPC toolchain (fail loud).
+
 ### File List
+
+New:
+- `grpc-routing-meta/example/demo/grpc_server.cc`
+- `grpc-routing-meta/example/demo/grpc_client.cc`
+- `grpc-routing-meta/example/demo/run.sh`
+- `grpc-routing-meta/example/demo/DEMO.md`
+
+Modified:
+- `grpc-routing-meta/example/format-check.sh` (added `demo/` to the formatted-tree scope)
+
+## Change Log
+
+- 2026-06-29 — Implemented Story 2.1 real-wire gRPC demo (client + server + run.sh + DEMO.md); verified live (DEMO PASSED), no core regression, gRPC opt-in. Status → review.

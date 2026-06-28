@@ -13,6 +13,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # for clangd / IntelliSense
 find_package(Protobuf REQUIRED)
 message(STATUS "Protobuf: ${Protobuf_VERSION}")
 
+find_package(Threads REQUIRED)   # test_concurrency links pthread (build.sh uses -pthread)
+
 find_library(PROTOC_LIB NAMES protoc libprotoc
   HINTS ${Protobuf_LIBRARY_DIRS} /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib)
 if(NOT PROTOC_LIB)
@@ -95,3 +97,11 @@ enable_testing()
 add_executable(test_projection tests/test_projection.cc)
 target_link_libraries(test_projection PRIVATE routing_meta_gen)
 add_test(NAME projection COMMAND test_projection)
+
+# bench_projection is a perf gate (not a correctness test) — built, not registered with ctest.
+add_executable(bench_projection tests/bench_projection.cc)
+target_link_libraries(bench_projection PRIVATE routing_meta_gen)
+
+add_executable(test_concurrency tests/test_concurrency.cc)
+target_link_libraries(test_concurrency PRIVATE routing_meta_gen Threads::Threads)
+add_test(NAME concurrency COMMAND test_concurrency)

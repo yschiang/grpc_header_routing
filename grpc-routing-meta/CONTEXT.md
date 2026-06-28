@@ -56,7 +56,7 @@ so the schema cannot diverge.
 6. **Digest = consistency.** When contexts are emitted, `x-process-context-digest = "sha256:" + sha256(contexts joined by '\n')`. The receiver recomputes and compares; mismatch ⇒ header/body drift or tamper.
 7. **count=0.** Emit `count` + `format` only — no digest, no context lines.
 8. **Size guard (never silent).** Emit `x-process-context-overflow: true` (suppress lines + digest) iff `count > 25` **OR** any single context `> 512 B` **OR** total metadata `> 7168 B`. Total is measured by the byte-tracking `MetadataSink` using gRPC's accounting (`name + value + 32` per header). `count` + `format` are still emitted. The byte check is independent of the count cap — 25 wide contexts can exceed 7 KB.
-9. **Domain scalar.** `x-mask-id` is projected via `(routing.project)`, reached by a nested-path walk, and `required` — `ProjectMeta` throws if the source field is empty. `(routing.project)` is rejected at codegen time unless it sits on a **non-repeated scalar leaf** (a repeated or message-typed tag, or one reached under a repeated field, fails `Validate` loudly — see `tests/negative/`). The 7 KB guard (8) counts the scalar's bytes when contexts follow it, but does not itself bound the scalar's length; domain scalars are short identifiers by contract.
+9. **Domain scalar.** `x-mask-id` is projected via `(routing.project)`, reached by a nested-path walk, and `required` — when empty, `ProjectMeta` records `Issue{MissingRequired, "x-mask-id"}` in its `ProjResult` (`ok=false`) and emits `x-routing-error: missing:x-mask-id`, suppressing the empty `x-mask-id` (it does **not** throw and does **not** emit an empty scalar). `(routing.project)` is rejected at codegen time unless it sits on a **non-repeated scalar leaf** (a repeated or message-typed tag, or one reached under a repeated field, fails `Validate` loudly — see `tests/negative/`). The 7 KB guard (8) counts the scalar's bytes when contexts follow it, but does not itself bound the scalar's length; domain scalars are short identifiers by contract.
 10. **One sender.** `Send(req, rt, sink) = FillCommon(rt, sink); ProjectMeta(req, sink)`. No system/method branching; the `ProjectMeta` overload is chosen by request type. Adding a system/method changes only a proto + the build list.
 
 ## Code map
@@ -85,7 +85,7 @@ so the schema cannot diverge.
 - [ ] count=0 (7): no digest, no lines.
 - [ ] Overflow by count (8): >25 ⇒ flag, no lines/digest.
 - [ ] Overflow by bytes (8): ≤25 contexts but >7 KB ⇒ flag (independent of count).
-- [ ] Domain scalar (9): nested path reached; empty ⇒ throws.
+- [ ] Domain scalar (9): nested path reached; empty ⇒ `ok=false` + `x-routing-error: missing:x-mask-id`, scalar suppressed (no throw).
 - [ ] Codegen fail-loud (9): malformed `(routing.project)` — repeated, message-typed, under-repeated, or duplicate key — makes `Validate` reject with a non-zero protoc exit (`tests/negative/`, asserted in `build.sh`).
 - [ ] Uniform sender (2,10): common 6 present and identical across systems; selectors absent.
 

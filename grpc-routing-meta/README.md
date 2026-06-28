@@ -19,15 +19,22 @@ the projection; one **unified sender** serves every system.
 | **sys3** | `example/proto/sys3.proto` | 10 | domain scalar `x-mask-id` (nested paths) + process-context |
 
 All three import the shared `example/proto/process_context.proto`, so the 7-field
-schema can't diverge. The sender is one template — no per-system branching:
+schema can't diverge. The sender is one template, **provided by the kit**
+(`example/src/common/send.h`, `namespace routingmeta`) — one `Send` for all
+systems (AD-4), not hand-written per sender, no per-system branching:
 
 ```cpp
 template <class Req>
-void Send(const Req& req, const Runtime& rt, MetadataSink& sink) {
-  FillCommon(rt, sink);     // 6 common headers, identical for every system
-  ProjectMeta(req, sink);   // body projection; generated overload chosen by Req type
+ProjResult Send(const Req& req, const Runtime& rt, MetadataSink& sink) {
+  FillCommon(rt, sink);            // 6 common headers, identical for every system
+  return ProjectMeta(req, sink);   // body projection; generated overload chosen by Req type
 }
 ```
+
+`Send` returns `ProjResult { bool ok; std::vector<Issue> issues;
+std::chrono::nanoseconds duration; }` and never throws on a data condition; the
+**caller** inspects `ProjResult` / `x-routing-error` to decide abort vs proceed
+(the kit reports, the caller decides).
 
 `ProjectMeta` is generated per request type by `example/src/plugin/protoc-gen-meta.cc`.
 Adding a 4th system (or a 16th method) = one proto + one line in the build list.

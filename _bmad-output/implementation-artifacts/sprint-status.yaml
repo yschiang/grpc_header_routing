@@ -63,5 +63,5 @@ development_status:
   1-12-canonical-projection-crypto-vectors-regression-guarded: done
   1-13-parser-robustness-lenient-no-crash: done
   1-14-thread-safe-re-entrant-projection: done
-  1-15-live-docs-match-the-code: backlog
+  1-15-live-docs-match-the-code: review
   epic-1-retrospective: optional

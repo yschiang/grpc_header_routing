@@ -179,6 +179,7 @@ class ProjGen : public CodeGenerator {
         "#include \"common/metadata_sink.h\"\n"
         "#include \"common/proj_result.h\"\n\n",
         "b", base);
+      p.Print("namespace routingmeta {\n\n");
       for (int i = 0; i < file->message_type_count(); ++i) {
         const Descriptor* d = file->message_type(i);
         std::vector<Proj> projs; walkProj(d, "", &projs);
@@ -186,6 +187,7 @@ class ProjGen : public CodeGenerator {
         p.Print("routingmeta::ProjResult ProjectMeta(const $ns$::$m$& req, routingmeta::MetadataSink& sink);\n",
                 "ns", ns, "m", d->name());
       }
+      p.Print("}  // namespace routingmeta\n");
     }
 
     {
@@ -200,6 +202,7 @@ class ProjGen : public CodeGenerator {
         "#include <vector>\n#include <string>\n\n",
         "b", base);
 
+      p.Print("namespace routingmeta {\n\n");
       for (int i = 0; i < file->message_type_count(); ++i) {
         const Descriptor* d = file->message_type(i);
         std::vector<Proj> projs; walkProj(d, "", &projs);
@@ -257,6 +260,7 @@ class ProjGen : public CodeGenerator {
         }
         p.Print("  return result;\n}\n\n");
       }
+      p.Print("}  // namespace routingmeta\n");
     }
     return true;
   }

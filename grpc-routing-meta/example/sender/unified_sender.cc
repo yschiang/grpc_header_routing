@@ -30,7 +30,7 @@
 // [+meta] The one call your app makes. Works for any request type; ProjectMeta
 // resolves by Req. No system/method branching anywhere.
 template <class Req>
-void Send(const Req& req, const Runtime& rt, routingmeta::MetadataSink& sink) {
+void Send(const Req& req, const routingmeta::Runtime& rt, routingmeta::MetadataSink& sink) {
   FillCommon(rt, sink);
   ProjectMeta(req, sink);
 }
@@ -56,7 +56,7 @@ static void fillCtx(common::v1::ProcessContext* c, const char* lot, const char* 
 }
 
 int main() {
-  const Runtime rt{"CORR-LOT01-001", "F18", "ETCH01"};   // [+meta] values you already have
+  const routingmeta::Runtime rt{"CORR-LOT01-001", "F18", "ETCH01"};   // [+meta] values you already have
 
   // --- sys1  sys1.control.calculate — batch of 2, full context ---
   {
@@ -74,7 +74,7 @@ int main() {
     sys2::v1::VerifyRequest req;                          // [app]
     req.add_contexts()->set_recipe_id("RCP_ETCH_V3");    // [app] business data
     routingmeta::VectorSink sink;                        // [+meta]
-    Send(req, Runtime{"CORR-LOT01-002", "F18", "ETCH01"}, sink);  // [+meta]
+    Send(req, routingmeta::Runtime{"CORR-LOT01-002", "F18", "ETCH01"}, sink);  // [+meta]
     dump("sys2  Verify (1 sparse context)", sink);        // [demo]
   }
 
@@ -82,7 +82,7 @@ int main() {
   {
     sys2::v1::ListRequest req;                            // [app] (no contexts to send)
     routingmeta::VectorSink sink;                        // [+meta]
-    Send(req, Runtime{"CORR-LIST-003", "F18", "ETCH01"}, sink);   // [+meta]
+    Send(req, routingmeta::Runtime{"CORR-LIST-003", "F18", "ETCH01"}, sink);   // [+meta]
     dump("sys2  List (count=0)", sink);                   // [demo]
   }
 
@@ -92,7 +92,7 @@ int main() {
     req.mutable_job()->mutable_mask()->set_mask_id("RET-9981");  // [app] business data (your mask id);
                                                             //       the x-mask-id HEADER is auto-projected by Send
     routingmeta::VectorSink sink;                          // [+meta]
-    Send(req, Runtime{"CORR-sys3-004", "F18", "LITHO01"}, sink);  // [+meta]
+    Send(req, routingmeta::Runtime{"CORR-sys3-004", "F18", "LITHO01"}, sink);  // [+meta]
     dump("sys3 Submit05 (nested mask id, no context)", sink);     // [demo]
   }
 

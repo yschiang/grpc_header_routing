@@ -183,7 +183,7 @@ int main() {
   // --- common headers: 6 present, uniform, routing-selectors absent (inv. 2, 10) ---
   {
     routingmeta::VectorSink sink;
-    FillCommon(Runtime{"CORR-X", "F18", "ETCH01"}, sink);
+    FillCommon(routingmeta::Runtime{"CORR-X", "F18", "ETCH01"}, sink);
     assert(sink.items.size() == 6);
     assert(sink.Get("x-contract-version") == "v1");
     assert(sink.Get("x-site-id") == "F18");

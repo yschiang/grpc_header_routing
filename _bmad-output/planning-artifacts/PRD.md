@@ -55,7 +55,7 @@ The kit demonstrates the design but does not yet *prove* it at production grade.
 | G-B | Proven on a matrix: GitHub Actions green on Linux × {gcc, clang} × {protobuf 3.20, 3.21} — build + negative-codegen gate + binaries + tests | B |
 | G-C | No silent failure: three gates *before the wire* (build / sender / overflow) plus the receiver digest gate, all explicit and observable | C |
 | G-D | Exact projection, no drift: digest round-trips; canonical key-sorted encoding; `/`→`%2F` | D |
-| G-E | One sender path: a single branchless `Send<>()` (= `FillCommon` + `ProjectMeta`) serves sys1/sys2/sys3 with zero `if (system==…)`; `Send` orchestration is the Sender's (demo/README), the kit ships **no** `Send` symbol (AD-4) | E |
+| G-E | One sender path: a single branchless `Send<>()` (= `FillCommon` + `ProjectMeta`) lives in the kit and serves sys1/sys2/sys3 with zero `if (system==…)`; the caller owns abort/proceed. (AD-4, plan.md P0.3) | E |
 | G-F | Policy centralized: the 7168 / 25 / 512 limits live in exactly one place; exactly one plugin | F |
 | G-G | Testable invariants: every `CONTEXT.md` invariant has an assert; codegen negative tests run in CI | G |
 | G-H | Perf observed: `duration` reported per call; a micro-bench prints time for 1/2/25/60 contexts; sub-ms | H |
@@ -87,6 +87,7 @@ fails the build when an annotation is malformed.
 | 2026-06-27 | 0.1 | Initial PRD from BRIEF + plan.md (locked decisions) | John (PM) |
 | 2026-06-27 | 0.2 | Phase-tightening: solutioning deferred to architecture (CR2, §4, §6); strict plan.md P1 scope added (§3.4); bench labeled criterion-H evidence (§1.4) | John (PM) |
 | 2026-06-27 | 0.3 | Reconcile FR6/G-E to architecture AD-4: drop "Send defined in the kit" → lib = populate+report, `Send` orchestration = Sender's, kit ships no `Send` symbol. NB: AD-4 deviates from locked `plan.md` P0.3 — pending cross-team ratification. | Winston (Architect), per j |
+| 2026-06-28 | 0.4 | Revert FR6/G-E to plan.md P0.3 — `Send` lives in the kit; withdraws v0.3's "no `Send` symbol" deviation (architecture AD-4 reverted → full plan.md fidelity). | John (PM), per j |
 
 ---
 
@@ -128,14 +129,12 @@ end consumers. There is **no UI**, so no UX workflow applies.
   repeated field) and duplicate projected keys. (SPEC §9; CONTEXT inv. 9.) *(present — keep)*
 - **FR5 — Receiver gate.** The receiver MUST recompute `x-process-context-digest` over the
   canonical (`\n`-joined) contexts and reject on mismatch. (SPEC §5.3.) *(present — keep)*
-- **FR6 — One sender path (populate + report; orchestration is the Sender's).** The kit
-  guarantees a single **branchless** projection path: generated `ProjectMeta` selected by
-  request type via ADL on the `routingmeta::MetadataSink` arg, with **zero** per-system
-  branching. `Send` is the **Sender's** orchestration wrapper (`FillCommon` + `ProjectMeta`
-  + timing → `ProjResult`); **the kit ships no `Send` symbol**. The reference `Send<>()`
-  lives in the demo (`unified_sender.cc`) / README and is itself branchless and
-  no-throw-on-data. (BRIEF E — location-agnostic; CONTEXT inv. 10; architecture **AD-4**,
-  which deviates from `plan.md` P0.3 and is pending cross-team ratification.)
+- **FR6 — One sender path in the kit.** `Send` MUST be a single branchless template defined
+  in the kit (`routingmeta::Send`) = `FillCommon` + generated `ProjectMeta` + timing →
+  `ProjResult`, with `ProjectMeta` selected by request type via ADL on the
+  `routingmeta::MetadataSink` arg and ZERO per-system branching; it MUST NOT throw on a data
+  condition (it propagates `ProjResult`). The caller owns only the abort/proceed decision
+  (reads `ok`/`issues`). (BRIEF E; plan.md P0.3; SPEC §7; CONTEXT inv. 10; AD-4.)
 - **FR7 — Perf trace.** Every `ProjResult.duration` MUST be populated with the measured
   projection time. A `bench_projection` binary MUST print per-call time for 1/2/25/60
   contexts and assert each is sub-millisecond. (BRIEF H; plan.md P0.4.)

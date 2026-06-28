@@ -23,7 +23,7 @@ FR2: Missing required scalar — when a `required` `(routing.project)` scalar (t
 FR3: Overflow as non-blocking data — when projecting would exceed any of total kit metadata > 7168 B, count > 25, or one context value > 512 B: emit `x-process-context-overflow: true`, suppress context lines + digest, still emit `count` + `format`, record a non-blocking `Issue{Overflow}`, leave `ok=true`.
 FR4: Build-time gate (fail loud) — the plugin rejects, with non-zero `protoc` exit, any `(routing.project)` not on a non-repeated scalar leaf (repeated, message-typed, or under a repeated field) and any duplicate projected key. (present — keep)
 FR5: Receiver gate — the receiver recomputes `x-process-context-digest` over the canonical (`\n`-joined) contexts and rejects on mismatch. (present — keep)
-FR6: One sender path (populate + report; orchestration is the Sender's) — a single branchless projection path: generated `ProjectMeta` selected by request type via ADL on the `routingmeta::MetadataSink` arg, zero per-system branching. `Send` is the Sender's wrapper (`FillCommon`+`ProjectMeta`+timing → `ProjResult`); the kit ships **no `Send` symbol**; the reference branchless, no-throw `Send<>()` lives in the demo/README. (BRIEF E is location-agnostic; architecture AD-4 — deviates from `plan.md` P0.3, pending ratification)
+FR6: One sender path in the kit — `Send` MUST be a single branchless template defined in the kit (`routingmeta::Send`) = `FillCommon` + generated `ProjectMeta` + timing → `ProjResult`, with `ProjectMeta` selected by request type via ADL on the `routingmeta::MetadataSink` arg and ZERO per-system branching; it MUST NOT throw on a data condition (it propagates `ProjResult`). The caller owns only the abort/proceed decision (reads `ok`/`issues`). (BRIEF E; plan.md P0.3; SPEC §7; CONTEXT inv. 10; AD-4.)
 FR7: Perf trace — every `ProjResult.duration` is populated with the measured projection time; a `bench_projection` binary prints per-call time for 1/2/25/60 contexts and asserts each is sub-millisecond.
 FR8: Canonical projection (regression-guarded) — per-context value = `(routing.pctx)` fields key-sorted (`ChamberId, LotID, OperationNO, PartID, RecipeID, StageID, Tech`), `&`-joined as `Key=UrlEncode(Value)` (RFC 3986 unreserved verbatim, else `%XX` uppercase, space `%20`), empty field → `Key=`; digest = `sha256:` + hex over `\n`-joined contexts. (present — keep + harden tests)
 
@@ -53,7 +53,7 @@ _Hardening (PRD §3.4 — plan.md P1, all four, trimmed):_
 _Architecture-derived technical requirements (from the Architecture Spine — shape stories):_
 - AR1 (no starter template — brownfield): build on the existing `grpc-routing-meta/example/` tree; there is **no** greenfield scaffold. Epic 1 Story 1 is NOT a project-init story.
 - AR2 (namespace + ADL — AD-2/AD-3): move the generated `ProjectMeta` **and** `struct Runtime`/`FillCommon` (currently global) into `namespace routingmeta`; the consumer's unqualified `ProjectMeta`/`FillCommon` calls resolve by ADL on the always-`routingmeta` `MetadataSink` arg, independent of the request's package.
-- AR3 (lib boundary — AD-4): kit public surface = generated `ProjectMeta` + `FillCommon` + `ProjResult`/`Issue` (NEW `src/common/proj_result.h`) + policy/digest/overflow; `Send` orchestration stays in the demo (`unified_sender.cc`)/README.
+- AR3 (lib boundary — AD-4): kit public surface = `routingmeta::Send` + generated `ProjectMeta` + `FillCommon` + `ProjResult`/`Issue` + policy; the demo calls `Send`.
 - AR4 (self-timed duration — AD-6): `ProjectMeta` self-times its own projection and populates `ProjResult.duration`; `bench_projection` measures `ProjectMeta` directly; the demo `Send` does not time.
 - AR5 (single-source policy — AD-7): the HPACK per-entry overhead (`32`, today duplicated as a literal `+32`) collapses to one definition in the leaf `metadata_sink.h`, referenced by `process_context_emit.h` (respects include direction).
 - AR6 (toolchain discovery — AD-13): `build.sh` uses `PROTOC`/`CXX` env overrides + `pkg-config protobuf` for include/lib flags (append `-lprotoc` for the plugin); CMake uses `find_package(Protobuf)`. Kill the hardcoded anaconda path.
@@ -71,7 +71,7 @@ FR2: Epic 1 (cluster 1) — missing-required → `x-routing-error` + `Issue{Miss
 FR3: Epic 1 (cluster 1) — overflow non-blocking → `Issue{Overflow}` + `x-process-context-overflow`
 FR4: Epic 1 (cluster 4) — build-time negative-codegen gate: fixtures + asserts (run in CI via cluster 3)
 FR5: Epic 1 (cluster 4) — receiver digest gate regression (behavior present)
-FR6: Epic 1 (cluster 1) — one branchless sender path; kit ships no `Send` symbol
+FR6: Epic 1 (cluster 1) — one branchless `routingmeta::Send` in the kit
 FR7: Epic 1 (cluster 2) — `duration` populated + `bench_projection` sub-ms
 FR8: Epic 1 (cluster 4) — canonical projection, regression-guarded
 
@@ -92,6 +92,16 @@ The kit demonstrably delivers every BRIEF benefit A–I at production grade: fai
 3. **Portable build + CI matrix** — NFR1, NFR2, HR4 + AR6 (toolchain discovery), AR7 (CI pinning). Criteria A, B.
 4. **Invariant test hardening** — FR4, FR5, FR8 + HR1, HR2, HR3. Criteria G, D; NFR3/4/5. *Asserts live in the existing `test_projection` binary.*
 5. **Docs truth** — AR8. Criterion I. *Live `grpc-routing-meta/` copies only; `refs/` untouched (CR3).*
+
+### Epic 2: Live gRPC demo (real-wire showcase)
+
+A runnable client + server that send real gRPC traffic carrying the projected routing-meta headers and verify them on receipt — elevating HR4 from compile-smoke (Story 1.9) to a live, self-checking end-to-end demo. Adds no wire bytes (CR1) and keeps the core build gRPC-free (NFR3): the demo is opt-in. Ships after Epic 1; builds on the locked kit surface (`routingmeta::Send`, `GrpcSink`, `VerifyDigest`) and the service definitions already in the protos.
+
+**FRs covered:** none new — demonstrates FR2/FR3/FR5/FR6/FR8 over a real channel.
+
+**Stories:**
+
+1. **Real-wire gRPC demo** — client + server + `run.sh` + `DEMO.md`; the server reuses the receiver digest gate over `client_metadata()`.
 
 ## Epic 1: Productionize `grpc-routing-meta` (example-grade → production-grade)
 
@@ -170,7 +180,7 @@ So that my call site needs no per-type qualification and can't be broken by a pr
 **When** binaries are run,
 **Then** no wire bytes change (CR1) and all binaries link.
 
-### Story 1.4: One branchless `Send<>()`; kit ships no `Send` symbol
+### Story 1.4: One branchless `routingmeta::Send` lives in the kit
 
 As a sender developer,
 I want a single branchless `Send<>()` serving sys1/sys2/sys3 with zero per-system code that propagates `ProjResult` and never throws,
@@ -180,7 +190,7 @@ So that all three systems go out one identical path and I own the abort/proceed 
 
 **Given** the kit,
 **When** searched,
-**Then** it declares no `Send` symbol; the reference `Send<>()` lives only in the demo (`unified_sender.cc`) / README. (FR6, AD-4 — pending ratification of the plan.md P0.3 deviation)
+**Then** the kit declares a single branchless `routingmeta::Send` (= `FillCommon` + `ProjectMeta`, returns `ProjResult`, no-throw); `unified_sender.cc` calls it. (FR6, AD-4)
 
 **Given** the demo `Send<>()`,
 **When** inspected,
@@ -227,9 +237,9 @@ So that I get a per-call latency signal with no coupling to the kit.
 **When** it runs,
 **Then** it measures its own projection time with a steady clock and populates `ProjResult.duration` (> 0). (FR7, AD-6)
 
-**Given** the demo `Send`,
+**Given** the demo (`unified_sender`) calling `routingmeta::Send`,
 **When** it runs,
-**Then** it does NOT time the projection; it only reads `ProjResult.duration`. (one timing point; AD-6)
+**Then** `Send` does NOT time the projection; it only propagates `ProjResult.duration`. (one timing point; AD-6)
 
 **Given** the kit,
 **When** inspected,
@@ -409,8 +419,46 @@ So that onboarding is not misled by stale claims.
 
 **Given** the live `README.md`,
 **When** updated,
-**Then** the `Send` / `ProjResult` usage and the "kit ships no `Send` symbol" boundary are described.
+**Then** the `Send` / `ProjResult` usage and the `routingmeta::Send`-in-the-kit boundary are described.
 
 **Given** `refs/`,
 **When** the doc work is complete,
 **Then** nothing under `refs/` (or `SPEC.md`) has been edited. (CR3)
+
+## Epic 2: Live gRPC demo (real-wire showcase)
+
+Take HR4 from a compile-only smoke to a live, self-checking demonstration: real gRPC traffic carries the projected headers across a localhost hop, and a server re-runs the existing digest gate on what it receives. The epic introduces no new wire contract and no new runtime dependency in the core kit — gRPC stays opt-in (CR1, NFR3). It builds entirely on Epic 1's locked surface (`routingmeta::Send`, `GrpcSink`, `VerifyDigest`/`ParseContext`) and the `Sys1/2/3Service` definitions already present in the protos (the build simply never ran `--grpc_out`).
+
+### Story 2.1: Real-wire gRPC demo (live client + server carrying projected routing-meta)
+
+As an adopter evaluating the kit,
+I want a runnable gRPC client + server that send real traffic carrying the projected routing-meta headers and verify them on receipt,
+So that I can see — not just take on faith — that body-authoritative projection survives an actual gRPC hop and that the digest gate catches header/body drift on the wire.
+
+**Acceptance Criteria:**
+
+**Given** a `grpc_server` implementing `Sys1Service` (and `Sys3Service.Submit05` for the missing-required path),
+**When** a client RPC arrives,
+**Then** the server reads `grpc::ServerContext::client_metadata()`, reconstructs the ordered `x-process-context` values + `x-process-context-digest`, and calls `routingmeta::VerifyDigest` (reused from `process_context_parser.h`, not reimplemented), logging accept/reject. (FR5 over the wire)
+
+**Given** a well-formed request projected via `GrpcSink` + `routingmeta::Send`,
+**When** the client calls the RPC over a real localhost channel,
+**Then** the server logs `digest check: OK` and accepts.
+
+**Given** a context tampered after projection (header/body drift),
+**When** the server verifies,
+**Then** `VerifyDigest` returns `ok=false` and the server rejects it (documented status/flag). (AD-9 over the wire)
+
+**Given** the empty-mask `Sys3Service.Submit05` and an overflow request,
+**When** the client sends them,
+**Then** `x-routing-error: missing:x-mask-id` (`ok=false`, still delivered) and `x-process-context-overflow: true` (server logs "no digest provided") are observed on the wire. (FR2, FR3; CR1 — no new bytes)
+
+**Given** `demo/run.sh`,
+**When** run where `grpc++` + `grpc_cpp_plugin` are present,
+**Then** it generates the `--grpc_out` stubs, builds with `-DROUTINGMETA_WITH_GRPC`, runs server+client, and exits non-zero unless the good case verifies AND the tamper case is rejected; absent gRPC it prints an install hint and exits non-zero — fail loud, never a fake pass. (NFR3 opt-in; BRIEF criterion C)
+
+**Given** `demo/DEMO.md`,
+**When** read,
+**Then** it states what the demo proves, prerequisites, how to run, annotated expected output, and the HR4 (compile-smoke → live) relation; nothing under `refs/` is edited. (CR3)
+
+**Story file:** `_bmad-output/implementation-artifacts/2-1-real-wire-grpc-demo.md`

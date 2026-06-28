@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-06-28
-last_updated: 2026-06-28  # story 1.1 → ready-for-dev
+last_updated: 2026-06-29  # story 2.1 → ready-for-dev (Epic 2 opened)
 project: gprc_header_routing
 project_key: NOKEY
 tracking_system: file-system
@@ -65,3 +65,5 @@ development_status:
   1-14-thread-safe-re-entrant-projection: done
   1-15-live-docs-match-the-code: done
   epic-1-retrospective: optional
+  epic-2: in-progress
+  2-1-real-wire-grpc-demo: ready-for-dev

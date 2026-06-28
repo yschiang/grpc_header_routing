@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: install toolchain deps
-        run: sudo apt-get update && sudo apt-get install -y build-essential clang pkg-config cmake git zlib1g-dev libgrpc++-dev
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang pkg-config cmake git zlib1g-dev libgrpc++-dev gcovr
       - name: cache protobuf prefix
         id: pbcache
         uses: actions/cache@v4
@@ -115,3 +115,13 @@ jobs:
             echo "== run $out under ASan+LSan+UBSan =="
             "./build/$out"
           done
+      - name: line-coverage gate (gcovr, runtime kit >= 80%)
+        # coverage.sh instruments the three drivers, runs them, and gcovr fails the
+        # build if src/common line coverage drops below 80%. One representative cell;
+        # g++ pairs with gcov natively. The plugin is gated by the negative fixtures.
+        if: matrix.cxx == 'g++' && matrix.protobuf == '3.21.12'
+        working-directory: grpc-routing-meta/example
+        env:
+          PKG_CONFIG_PATH: ${{ env.PREFIX }}/lib/pkgconfig
+          LD_LIBRARY_PATH: ${{ env.PREFIX }}/lib
+        run: ./coverage.sh

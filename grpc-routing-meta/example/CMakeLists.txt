@@ -13,6 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # for clangd / IntelliSense
 find_package(Protobuf REQUIRED)
 message(STATUS "Protobuf: ${Protobuf_VERSION}")
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)   # prefer -pthread (matches build.sh) over bare -lpthread
 find_package(Threads REQUIRED)   # test_concurrency links pthread (build.sh uses -pthread)
 
 find_library(PROTOC_LIB NAMES protoc libprotoc

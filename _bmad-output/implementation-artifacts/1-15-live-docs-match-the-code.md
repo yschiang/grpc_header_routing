@@ -4,7 +4,7 @@ baseline_commit: 8e46efe
 
 # Story 1.15: Live docs match the code
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -143,3 +143,17 @@ claude-opus-4-8[1m] (engineering subagent under Amelia/dev-story; main-loop inde
 
 - 2026-06-28 — Story 1.15 drafted (create-story): align the three live docs with the shipped code and close the CMake↔build.sh parity gap. CONTEXT.md inv. 9 throw→`ProjResult`/`MissingRequired`/`x-routing-error`; OVERVIEW.zh.md throw→`ProjResult` + digest integrity-only (not security); README.md kit `routingmeta::Send` returning `ProjResult` + the Send-in-the-kit boundary (AD-4); CMakeLists.txt gains `bench_projection` (deferred 1.7/1.8) + `test_concurrency` (1.14). `refs/` untouched (CR3). Docs + CMake only — zero wire/code change (CR1/AD-9). The final story of Epic 1.
 - 2026-06-28 — Story 1.15 implemented (dev-story): all 5 tasks done. CONTEXT.md/OVERVIEW.zh.md/README.md prose aligned to the shipped failure-as-data + integrity-digest + kit-`Send` behavior (each claim verified against `send.h`/`proj_result.h`/`sys3.proj.cc`/SPEC §5.3); `CMakeLists.txt` gains `bench_projection` + `test_concurrency` (+`Threads`). CR3 verified — zero `refs/` edits. Regression green, `receiver_verify` digest UNCHANGED (`efafba16…`), `test_concurrency` passes. CMake new targets registered/structurally verified (full local CMake link blocked by a pre-existing conda-host protobuf-static quirk at `protoc-gen-meta`, unrelated to 1.15; CI builds protobuf from source). No drift — docs + CMake only. Status → review.
+- 2026-06-28 — Story 1.15 code review (3 adversarial reviewers, no shared context): all 5 ACs MET, CR3 hard-pass (zero `refs/` edits), wire frozen, bookkeeping accurate; Edge Case Hunter verified every rewritten claim verbatim against `send.h`/`proj_result.h`/`sys3.proj.cc`/SPEC §5.3 and confirmed CMake parity (targets registered; the only build break is the pre-existing conda-host `protoc-gen-meta` static-protobuf link, not a 1.15 target). **All three reviewers independently flagged the same Med:** the integrity-not-security digest reframing was applied to OVERVIEW but `CONTEXT.md` inv 6 still said "drift or **tamper**" — a criterion-I inconsistency on the exact topic the story propagated. **Fixed:** inv 6 reworded to the integrity-not-security framing (no key/signature; a body editor recomputes; not malicious-tamper detection; SPEC §5.3). Also took the cheap consistency Lows: inv 10 now shows `Send -> ProjResult`; the checklist digest line drops "tamper" for "mangled value"; `CMakeLists.txt` adds `set(THREADS_PREFER_PTHREAD_FLAG ON)` for true `-pthread` parity. Docs + CMake-config only — no code/wire change, digest still `efafba16…`. Status → done. **Epic 1 complete (all 15 stories done).**
+
+## Senior Developer Review (AI)
+
+**Date:** 2026-06-28 · **Outcome:** Approve (1 Med + 3 Low fixed, no High). Three independent adversarial reviewers, no shared context. Final story of Epic 1.
+
+- **Acceptance Auditor (spec/arch):** AC1–5 all MET; CR3 hard-pass (`git diff -- refs/` empty); each claim verified against `send.h:22`/`proj_result.h`/`sys3.proj.cc`; CMake mirrors `build.sh`; deferred CMake item RESOLVED; bookkeeping complete. Med: CONTEXT inv 6 "tamper" un-reframed.
+- **Edge Case Hunter (repo + build):** Verified docs-vs-code verbatim; CR3 empty; regression green + digest unchanged; CMake new targets registered (`ctest -N`), the link break is the pre-existing `protoc-gen-meta` host quirk; markdown fences/tables balanced. Med: same inv 6 "tamper".
+- **Blind Hunter (diff-only):** README signature/fields exact; CMake correct (`enable_testing` precedes `add_test`, `Threads::Threads` valid); CR3 sound. Med: inv 6 "or tamper" contradicts the reframing; Low: inv 10 shorthand omits `ProjResult`; Low: `THREADS_PREFER_PTHREAD_FLAG` for exact `-pthread` parity.
+
+### Action Items
+- [x] [AI-Review][Med] Reword CONTEXT.md inv 6 to integrity-not-security (drop the security "tamper" framing) — done.
+- [x] [AI-Review][Low] CONTEXT.md inv 10 `Send -> ProjResult`; checklist digest line "tamper" → "mangled value" — done.
+- [x] [AI-Review][Low] `CMakeLists.txt` `set(THREADS_PREFER_PTHREAD_FLAG ON)` — done.

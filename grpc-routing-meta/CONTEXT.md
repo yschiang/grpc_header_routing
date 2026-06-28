@@ -53,11 +53,11 @@ so the schema cannot diverge.
 3. **Shared 7-field schema.** `ProcessContext` = `LotID, RecipeID, Tech, PartID, StageID, OperationNO, ChamberId`, identical for every system.
 4. **Canonical encoding.** Each `x-process-context` = fields **sorted by key**, `&`-joined, each value URL-encoded (RFC 3986 unreserved kept, else `%XX`, space→`%20`). Sorted key order: `ChamberId, LotID, OperationNO, PartID, RecipeID, StageID, Tech`.
 5. **Dynamic count.** `x-process-context-count` = the body's `repeated` size (0..N) — always, even on overflow. Nothing is hard-coded.
-6. **Digest = consistency.** When contexts are emitted, `x-process-context-digest = "sha256:" + sha256(contexts joined by '\n')`. The receiver recomputes and compares; mismatch ⇒ header/body drift or tamper.
+6. **Digest = consistency.** When contexts are emitted, `x-process-context-digest = "sha256:" + sha256(contexts joined by '\n')`. The receiver recomputes and compares; mismatch ⇒ header/body drift (sender bug, projection-version skew, or transit mangling). This is an **integrity** check, not a security control — there is no key and no signature, so a party who can edit the body recomputes the digest; it does not detect malicious tampering (SPEC §5.3).
 7. **count=0.** Emit `count` + `format` only — no digest, no context lines.
 8. **Size guard (never silent).** Emit `x-process-context-overflow: true` (suppress lines + digest) iff `count > 25` **OR** any single context `> 512 B` **OR** total metadata `> 7168 B`. Total is measured by the byte-tracking `MetadataSink` using gRPC's accounting (`name + value + 32` per header). `count` + `format` are still emitted. The byte check is independent of the count cap — 25 wide contexts can exceed 7 KB.
 9. **Domain scalar.** `x-mask-id` is projected via `(routing.project)`, reached by a nested-path walk, and `required` — when empty, `ProjectMeta` records `Issue{MissingRequired, "x-mask-id"}` in its `ProjResult` (`ok=false`) and emits `x-routing-error: missing:x-mask-id`, suppressing the empty `x-mask-id` (it does **not** throw and does **not** emit an empty scalar). `(routing.project)` is rejected at codegen time unless it sits on a **non-repeated scalar leaf** (a repeated or message-typed tag, or one reached under a repeated field, fails `Validate` loudly — see `tests/negative/`). The 7 KB guard (8) counts the scalar's bytes when contexts follow it, but does not itself bound the scalar's length; domain scalars are short identifiers by contract.
-10. **One sender.** `Send(req, rt, sink) = FillCommon(rt, sink); ProjectMeta(req, sink)`. No system/method branching; the `ProjectMeta` overload is chosen by request type. Adding a system/method changes only a proto + the build list.
+10. **One sender.** `Send(req, rt, sink) -> ProjResult = FillCommon(rt, sink); return ProjectMeta(req, sink)` (the kit's `routingmeta::Send` forwards `ProjectMeta`'s `ProjResult`). No system/method branching; the `ProjectMeta` overload is chosen by request type. Adding a system/method changes only a proto + the build list.
 
 ## Code map
 
@@ -81,7 +81,7 @@ so the schema cannot diverge.
 - [ ] Encoding (4): `/`→`%2F`, space→`%20`, unreserved untouched; decode round-trips.
 - [ ] Key-sort (4): `ChamberId` precedes `LotID` in every context line.
 - [ ] Dynamic count (5): 0, 1, 2, N contexts → matching `x-process-context-count`.
-- [ ] Digest round-trip (6): sender→receiver `VerifyDigest` ok; tamper ⇒ fail.
+- [ ] Digest round-trip (6): sender→receiver `VerifyDigest` ok; a mangled context value ⇒ fail.
 - [ ] count=0 (7): no digest, no lines.
 - [ ] Overflow by count (8): >25 ⇒ flag, no lines/digest.
 - [ ] Overflow by bytes (8): ≤25 contexts but >7 KB ⇒ flag (independent of count).

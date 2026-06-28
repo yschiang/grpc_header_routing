@@ -43,6 +43,12 @@ calls — plus `ProjResult` and `MetadataSink` — are the whole kit surface. `S
 a Sender-owned convenience wrapper, **not** part of the kit (see
 [`docs/adr/0001-send-ownership-stays-in-sender.md`](docs/adr/0001-send-ownership-stays-in-sender.md)).
 
+`ProjectMeta` takes an optional third argument `emit_digest` (default `true`): pass
+`false` to omit the `x-process-context-digest` header for that call — count, format,
+context lines, and the overflow decision are unchanged. The receiver verifies **if
+present**: an absent digest is skipped, not treated as drift (see SPEC §5.3 /
+[`docs/adr/0002-optional-process-context-digest.md`](docs/adr/0002-optional-process-context-digest.md)).
+
 ## Size guard (no silent failures)
 
 gRPC bounds total metadata; exceeding it makes APISIX/HTTP2 reset or truncate the
@@ -71,7 +77,7 @@ cmake -S . -B build && cmake --build build -j     # canonical, portable
 ./build.sh                                         # direct protoc + clang, same steps
 
 ./build/unified_sender     # prints the metadata each system attaches
-./build/receiver_verify    # parses + verifies the digest (round-trip)
+./build/receiver_verify    # parses + verifies the digest if present (round-trip)
 ./build/test_projection    # or: ctest --test-dir build
 ./build/bench_projection   # per-call duration for 1/2/25/60 contexts (sub-ms)
 ```

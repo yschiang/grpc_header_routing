@@ -4,7 +4,7 @@ baseline_commit: e4a977342f09909919ac77ed655331204d183bcf
 
 # Story 1.3: One coherent `routingmeta` namespace, resolved by ADL
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -43,6 +43,12 @@ so that my call site needs no per-type qualification and can't be broken by a pr
   - [x] `cd grpc-routing-meta/example && ./build.sh` — rebuild plugin, regenerate `*.proj.*` (now namespaced), link all binaries + the negative-codegen gate stays green.
   - [x] `./build/test_projection` → `ALL TESTS PASSED` (the `FillCommon`/`ProjectMeta` unqualified calls now resolve by ADL — this is the AC3 proof).
   - [x] `./build/unified_sender` and `./build/receiver_verify` → run clean; output and digests byte-identical to the pre-change run (CR1). Confirm a generated `*.proj.h` shows `namespace routingmeta {` wrapping the `ProjectMeta` declarations.
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). 0 patch, 0 decision-needed, 1 deferred, 0 dismissed. Blind Hunter: no defects. Acceptance Auditor: DONE — 4/4 ACs, scope held, zero violations. Edge Case Hunter: all branches verified sound (ADL anchored on the sink; no caller missed; includes outside the namespace; `receiver_verify` compiles unchanged)._
+
+- [x] [Review][Defer] `GrpcSink` + ADL path is never instantiated — only the class body is compile-smoked, no TU calls `ProjectMeta(req, grpcSink)` [grpc-routing-meta/example/src/common/metadata_sink.h:55-69] — deferred to **Story 1.9** (HR4: CI gRPC compile-smoke of the `ROUTINGMETA_WITH_GRPC` GrpcSink adapter). Pre-existing gap (the gRPC path is absent from `build.sh`/local toolchain), not introduced by 1.3. The language guarantees resolution (`GrpcSink ∈ routingmeta` ⇒ ADL finds the namespaced `ProjectMeta`); 1.9 adds the smoke that actually exercises it.
 
 ## Dev Notes
 

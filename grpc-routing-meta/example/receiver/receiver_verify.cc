@@ -44,10 +44,32 @@ int main() {
                 kv["LotID"].c_str(), kv["ChamberId"].c_str(), kv["RecipeID"].c_str());
   }
 
-  auto vr = routingmeta::VerifyDigest(contexts, digest);
-  std::printf("\ndigest check: %s\n  expected: %s\n  actual:   %s\n",
-              vr.ok ? "OK (header matches body)" : "FAILED",
-              vr.expected_digest.c_str(), vr.actual_digest.c_str());
-  if (!vr.ok) std::printf("  error: %s\n", vr.error.c_str());
-  return vr.ok ? 0 : 1;
+  // (1) ACCEPT: untampered headers are the faithful projection of the body.
+  auto accept = routingmeta::VerifyDigest(contexts, digest);
+  std::printf("\n[accept] digest check: %s\n  expected: %s\n  actual:   %s\n",
+              accept.ok ? "OK (header matches body)" : "FAILED",
+              accept.expected_digest.c_str(), accept.actual_digest.c_str());
+  if (!accept.ok) std::printf("  error: %s\n", accept.error.c_str());
+
+  // (2) REJECT: simulate header/body drift — something mangles one context in transit
+  // (here ChamberId CH-A -> CH-X) while the digest header rides through unchanged. The
+  // receiver MUST catch the mismatch. This is the whole point of the digest, so run it
+  // — don't just describe the accept case.
+  auto tampered = contexts;
+  if (!tampered.empty()) {
+    auto pos = tampered[0].find("CH-A");
+    if (pos != std::string::npos) tampered[0].replace(pos, 4, "CH-X");
+  }
+  auto reject = routingmeta::VerifyDigest(tampered, digest);
+  std::printf("\n[reject] tampered body (CH-A->CH-X): %s\n  expected: %s\n  actual:   %s\n",
+              reject.ok ? "ACCEPTED (BUG!)" : "rejected (mismatch caught)",
+              reject.expected_digest.c_str(), reject.actual_digest.c_str());
+  if (!reject.ok) std::printf("  error: %s\n", reject.error.c_str());
+
+  // Self-check: the round-trip is correct iff clean headers verify AND tampered ones
+  // are caught. Non-zero exit if either half fails.
+  const bool ok = accept.ok && !reject.ok;
+  std::printf("\nresult: %s\n",
+              ok ? "PASS (clean accepted, tampered rejected)" : "FAIL");
+  return ok ? 0 : 1;
 }

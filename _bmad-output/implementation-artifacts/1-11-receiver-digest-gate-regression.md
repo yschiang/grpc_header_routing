@@ -4,7 +4,7 @@ baseline_commit: 32e0611b46c453126c257c40e4e19adbf4716dab
 
 # Story 1.11: Receiver digest gate regression
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -43,6 +43,15 @@ so that any header↔body drift is rejected.
   - [x] `./build/test_projection` → `ALL TESTS PASSED` (the new digest-gate block's accept + 4 reject asserts pass).
   - [x] `./build/receiver_verify` → prints `digest check: OK …` (accept) AND the new `tamper check: rejected (expected) — …` line, and exits `0` (genuine path accepts; the tamper self-check asserts rejection internally). `echo $?` → 0.
   - [x] Regression: `./build/bench_projection` → `BENCH PASSED`; the `[neg ]` gate still green; wire output byte-identical (this story only adds receiver-side assertions — no projection/plugin/wire change; CR1/AD-9).
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter [diff-only] + combined Edge+Acceptance reviewer [diff+repo+ran/scratch-vacuity], no shared context). 0 patch, 0 decision, 0 deferred, 3 dismissed. **Both PASS — AC tally 3/3.** The Edge+Auditor reviewer empirically proved non-vacuity: flipped 3 different reject asserts → SIGABRT (exit 134), including `receiver_verify`'s tamper guard which printed `tamper check: ACCEPTED (BUG!)` before aborting; all reverted, repo untouched. The Blind Hunter confirmed every reject is guaranteed by distinct-input / no-sha256-collision reasoning (no spurious-fail risk), the `receiver_verify` exit-0 contract is intact (tamper guard fires only on a real regression, robust even to the empty-digest path), no UB, format args correct._
+
+_Dismissed (3):_
+- _Blind Low "`<cstdio>` for `printf` not added by the diff" — non-issue: `receiver_verify.cc` already `#include`s `<cstdio>` (the diff added only `<cassert>`); the build compiles `printf` cleanly. Confirmed by grep._
+- _Blind Low "non-empty-fixture assumption for `cs[0]`/`pop_back()`" — `sys1Req(2)` yields exactly 2 contexts, so the indexing/pop is always valid; fixture invariant, not a runtime risk._
+- _Edge Minor "corrupted-digest sub-assert `actual_digest != expected_digest` is weaker than `!ok`" — harmless: the load-bearing `assert(!r.ok)` is the one that bites (proven by the scratch flip); the `actual != expected` line is documentation-strength and correct. Reordered / whitespace / added-context edge cases all cleared — the order-sensitive `'\n'`-join digest catches them, so separate asserts would be redundant._
 
 ## Dev Notes
 
@@ -126,3 +135,4 @@ claude-opus-4-8[1m] (Amelia / Senior Software Engineer) — engineering by a gen
 
 - 2026-06-28 — Story 1.11 drafted (create-story): make the receiver digest gate's REJECT path first-class and regression-guarded. `receiver_verify` gains a tamper self-check (proves it rejects header↔body drift, still exits 0 on the genuine path); `test_projection` gains a dedicated digest-gate block asserting accept + four reject forms (tampered context, corrupted digest, dropped context, no digest) pinning `VerifyResult`'s reported reason. No projection/plugin/`VerifyDigest`/wire change (CR1/AD-9) — receiver/test assertions only.
 - 2026-06-28 — Story 1.11 implemented (dev-story): `receiver_verify` reject self-check (+13) + `test_projection` digest-gate block (+31). `ALL TESTS PASSED`; `receiver_verify` prints both accept + reject lines, exit 0; vacuity-proven (flipped assert → SIGABRT, reverted). Additions only; wire byte-identical (digest `efafba16…`). Engineering by a subagent, independently re-verified in the main loop. Status → review.
+- 2026-06-28 — Story 1.11 code review (Blind diff-only + combined Edge+Acceptance, no shared context): both PASS, 3/3 ACs. Edge+Auditor empirically proved non-vacuity (3 assert flips → SIGABRT, reverted). 0 patch, 0 deferred, 3 dismissed (`<cstdio>` already present; non-empty-fixture invariant; weaker documentation-assert harmless). Status → done.

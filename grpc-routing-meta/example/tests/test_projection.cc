@@ -250,6 +250,131 @@ int main() {
     assert(s2.Get("x-mask-id").empty());                           // empty scalar suppressed
   }
 
+  // ===========================================================================
+  // Story 1.12 — regression locks. Pure assertions over CURRENT behavior; no kit,
+  // plugin, proto, or wire byte changes. Each block pins a contract so a future
+  // refactor that drifts it fails here.
+  // ===========================================================================
+
+  // --- 1.12 Task 1: golden canonical-projection vector (AC1) ---
+  // One context, all 7 fields (PartID empty, RecipeID has '/'). Pinned to an
+  // INDEPENDENT literal: key names, sort order, '&'-join, %2F encoding, and the
+  // present-but-empty `PartID=` policy all fail here if any of them drifts.
+  {
+    sys1::v1::CalculateRequest req;
+    auto* c = req.add_contexts();
+    c->set_chamber_id("CH-A");
+    c->set_lot_id("LOT01");
+    c->set_operation_no("OP100");
+    c->set_part_id("");                                    // empty -> PartID=
+    c->set_recipe_id("R/A");                               // '/' -> %2F
+    c->set_stage_id("ETCH");
+    c->set_tech("N5");
+    routingmeta::VectorSink sink;
+    auto r = ProjectMeta(req, sink);
+    assert(r.ok);
+    assert(sink.Count("x-process-context") == 1);
+    assert(sink.Get("x-process-context") ==
+           "ChamberId=CH-A&LotID=LOT01&OperationNO=OP100&PartID=&RecipeID=R%2FA&StageID=ETCH&Tech=N5");
+  }
+
+  // --- 1.12 Task 2: determinism — same request projects byte-identically twice (AC2) ---
+  {
+    auto req = sys1Req(3);
+    routingmeta::VectorSink a, b;
+    ProjectMeta(req, a);
+    ProjectMeta(req, b);
+    assert(a.items == b.items);                            // full key/value/order seq, incl. digest
+  }
+
+  // --- 1.12 Task 3: SHA-256 KATs (independent published vectors) + url round-trips (AC3) ---
+  // Expected values are NIST/published, NEVER recomputed with the kit.
+  assert(routingmeta::Sha256Hex("") ==
+         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  assert(routingmeta::Sha256Hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") ==
+         "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");  // 56-byte NIST KAT
+  assert(routingmeta::Sha256Hex(std::string(1000000, 'a')) ==
+         "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");  // 1M 'a' NIST KAT
+  assert(routingmeta::Sha256Hex(std::string(55, 'a')) ==                       // sha256(b'a'*55), pinned
+         "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318");
+  assert(routingmeta::UrlDecode("R%2FA") == "R/A");                            // %2F -> '/'
+  assert(routingmeta::UrlDecode(routingmeta::UrlEncode("\xC3\xA9")) == "\xC3\xA9");  // high-byte round-trip
+
+  // --- 1.12 Task 4: all 10 sys3 mask paths -> same x-mask-id (AC1) ---
+  // Each Submit message carries the id at a different body path; one annotation,
+  // the generated walkProj reaches each one.
+  { routingmeta::VectorSink s; sys3::v1::Submit01Request r; r.set_mask_id("RET-01");
+    assert(ProjectMeta(r, s).ok); assert(s.Get("x-mask-id") == "RET-01"); }              // top-level
+  { routingmeta::VectorSink s; sys3::v1::Submit02Request r; r.set_reticle_id("RET-02");
+    assert(ProjectMeta(r, s).ok); assert(s.Get("x-mask-id") == "RET-02"); }              // renamed
+  { routingmeta::VectorSink s; sys3::v1::Submit03Request r; r.mutable_mask()->set_id("RET-03");
+    assert(ProjectMeta(r, s).ok); assert(s.Get("x-mask-id") == "RET-03"); }              // nested 1
+  { routingmeta::VectorSink s; sys3::v1::Submit04Request r; r.mutable_layer()->set_mask_no("RET-04");
+    assert(ProjectMeta(r, s).ok); assert(s.Get("x-mask-id") == "RET-04"); }              // nested 1, renamed
+  { routingmeta::VectorSink s; sys3::v1::Submit05Request r; r.mutable_job()->mutable_mask()->set_mask_id("RET-05");
+    assert(ProjectMeta(r, s).ok); assert(s.Get("x-mask-id") == "RET-05"); }              // nested 2
+  { routingmeta::VectorSink s; sys3::v1::Submit06Request r; r.mutable_request_header()->set_mask_id("RET-06");
+    assert(ProjectMeta(r, s).ok); assert(s.Get("x-mask-id") == "RET-06"); }              // sub-msg
+  { routingmeta::VectorSink s; sys3::v1::Submit07Request r; r.set_photo_mask_id("RET-07");
+    assert(ProjectMeta(r, s).ok); assert(s.Get("x-mask-id") == "RET-07"); }              // renamed top-level
+  { routingmeta::VectorSink s; sys3::v1::Submit08Request r; r.mutable_mask_block()->set_mask_ref("RET-08");
+    assert(ProjectMeta(r, s).ok); assert(s.Get("x-mask-id") == "RET-08"); }              // nested
+  { routingmeta::VectorSink s; sys3::v1::Submit09Request r; r.set_maskid("RET-09");
+    assert(ProjectMeta(r, s).ok); assert(s.Get("x-mask-id") == "RET-09"); }              // top-level
+  { routingmeta::VectorSink s; sys3::v1::Submit10Request r; r.mutable_exposure()->mutable_mask()->set_id("RET-10");
+    assert(ProjectMeta(r, s).ok); assert(s.Get("x-mask-id") == "RET-10"); }              // nested 2
+  // empty-required on a NON-Submit05, deep-nested message -> failure-as-data
+  { sys3::v1::Submit10Request empty; routingmeta::VectorSink s;
+    auto r = ProjectMeta(empty, s);
+    assert(!r.ok);
+    assert(r.issues.size() == 1 && r.issues[0].kind == routingmeta::Issue::MissingRequired);
+    assert(s.Get("x-routing-error") == "missing:x-mask-id");
+    assert(s.Get("x-mask-id").empty()); }
+
+  // --- 1.12 Task 5: exact-threshold overflow boundaries (strict '>' locks; AC2-adjacent) ---
+  // count: 25 -> NO overflow (digest present); 26 -> overflow. Locks `ctxs.size() > 25`.
+  { sys1::v1::CalculateRequest req;
+    for (int i = 0; i < 25; ++i) req.add_contexts();                      // 25 tiny contexts
+    routingmeta::VectorSink sink; auto r = ProjectMeta(req, sink);
+    assert(sink.Get("x-process-context-overflow").empty());
+    assert(!sink.Get("x-process-context-digest").empty());
+    assert(sink.Count("x-process-context") == 25);
+    assert(r.issues.empty()); }
+  { sys1::v1::CalculateRequest req;
+    for (int i = 0; i < 26; ++i) req.add_contexts();                      // 26 -> count>25
+    routingmeta::VectorSink sink; ProjectMeta(req, sink);
+    assert(sink.Get("x-process-context-overflow") == "true");
+    assert(sink.Count("x-process-context") == 0); }
+  // line: encoded line EXACTLY 512 -> NO overflow; 513 -> overflow. Locks `maxline > 512`.
+  // Calibrated: empty-field skeleton line = 63 B; PartID pad 449 -> 512, 450 -> 513.
+  { sys1::v1::CalculateRequest req;
+    req.add_contexts()->set_part_id(std::string(449, 'x'));               // line == 512
+    routingmeta::VectorSink sink; ProjectMeta(req, sink);
+    assert(sink.Get("x-process-context").size() == 512);
+    assert(sink.Get("x-process-context-overflow").empty());
+    assert(!sink.Get("x-process-context-digest").empty()); }
+  { sys1::v1::CalculateRequest req;
+    req.add_contexts()->set_part_id(std::string(450, 'x'));               // line == 513 > 512
+    routingmeta::VectorSink sink; ProjectMeta(req, sink);
+    assert(sink.Get("x-process-context-overflow") == "true");
+    assert(sink.Count("x-process-context") == 0); }
+  // total: projected metadata total EXACTLY 7168 -> NO overflow; 7169 -> overflow.
+  // Locks `sink.bytes() + projected > 7168`. Calibrated: 21 ctx @ PartID(200) + 1 ctx
+  // @ PartID(238) -> sink.bytes()==7168 (each line<=512, count 22<=25); +1 byte -> 7169.
+  { sys1::v1::CalculateRequest req;
+    for (int i = 0; i < 21; ++i) req.add_contexts()->set_part_id(std::string(200, 'y'));
+    req.add_contexts()->set_part_id(std::string(238, 'z'));
+    routingmeta::VectorSink sink; ProjectMeta(req, sink);
+    assert(sink.bytes() == 7168);                                         // total at threshold
+    assert(sink.Get("x-process-context-overflow").empty());
+    assert(!sink.Get("x-process-context-digest").empty()); }
+  { sys1::v1::CalculateRequest req;
+    for (int i = 0; i < 21; ++i) req.add_contexts()->set_part_id(std::string(200, 'y'));
+    req.add_contexts()->set_part_id(std::string(239, 'z'));               // +1 byte -> 7169 > 7168
+    routingmeta::VectorSink sink; ProjectMeta(req, sink);
+    assert(sink.Get("x-process-context-overflow") == "true");
+    assert(sink.Count("x-process-context") == 0); }
+
   std::printf("ALL TESTS PASSED\n");
   return 0;
 }

@@ -56,17 +56,31 @@ $CXX $CXXFLAGS \
   -o "$BIN/protoc-gen-meta"
 
 # 2b. negative codegen: every fixture under tests/negative/ MUST be rejected by the
-#     plugin's Validate pass (the "fail loud, never silent" contract). protoc returns
-#     non-zero when the plugin does -> we assert that here.
-echo "[neg ] codegen must reject malformed (routing.project)"
+#     plugin's Validate pass (the "fail loud, never silent" contract). Rejection alone
+#     is not enough — a fixture accepted for the wrong reason, or rejected by an
+#     unrelated error, would pass a bare exit-code check. So we capture stderr and
+#     require it contains that fixture's EXPECTED Validate substring (quoted verbatim
+#     from src/plugin/protoc-gen-meta.cc). Fail if ANY fixture is accepted OR rejected
+#     for the wrong reason.
+echo "[neg ] codegen must reject malformed (routing.project) for the RIGHT reason"
 neg_ok=1
 for f in tests/negative/*.proto; do
-  if "$PROTOC" "${IPROTO[@]}" -I tests/negative \
-       --plugin=protoc-gen-meta="$BIN/protoc-gen-meta" \
-       --meta_out="$GEN" "$f" >/dev/null 2>&1; then
+  case "$(basename "$f")" in
+    bad_duplicate_key.proto)          want='duplicate (routing.project) key' ;;                        # Validate() dup-key branch
+    bad_message_project.proto)        want='a message field cannot project to a single-valued header' ;; # ProjectOnlyOnScalarLeaf (message)
+    bad_repeated_scalar.proto)        want='a repeated field cannot project to a single-valued header' ;; # ProjectOnlyOnScalarLeaf (repeated)
+    bad_project_under_repeated.proto) want='is set under repeated field' ;;                            # NoProjectUnderRepeated
+    *) echo "       FAIL: no expected-reason mapping for $f"; neg_ok=0; continue ;;
+  esac
+  if err="$("$PROTOC" "${IPROTO[@]}" -I tests/negative \
+             --plugin=protoc-gen-meta="$BIN/protoc-gen-meta" \
+             --meta_out="$GEN" "$f" 2>&1 1>/dev/null)"; then
     echo "       FAIL: $f was accepted but must be rejected"; neg_ok=0
   else
-    echo "       ok (rejected): $(basename "$f")"
+    case "$err" in
+      *"$want"*) echo "       ok (rejected: $want): $(basename "$f")" ;;
+      *) echo "       FAIL: $f rejected for WRONG reason; want \"$want\", got: $err"; neg_ok=0 ;;
+    esac
   fi
 done
 [ "$neg_ok" = 1 ] || { echo "negative codegen check FAILED"; exit 1; }

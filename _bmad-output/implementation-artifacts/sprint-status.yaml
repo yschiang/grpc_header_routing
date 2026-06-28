@@ -56,7 +56,7 @@ development_status:
   1-5-single-source-the-hpack-overhead-constant: done
   1-6-projectmeta-self-times-and-reports-duration: done
   1-7-bench-projection-proves-sub-millisecond: done
-  1-8-portable-build-no-machine-specific-paths: backlog
+  1-8-portable-build-no-machine-specific-paths: review
   1-9-proven-on-a-pinned-ci-matrix: backlog
   1-10-build-time-negative-codegen-gate-proven-by-fixtures: backlog
   1-11-receiver-digest-gate-regression: backlog

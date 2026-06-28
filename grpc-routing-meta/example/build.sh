@@ -6,20 +6,28 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-PROTO_HOME=/Users/johnson.chiang/anaconda3
-PROTOC="$PROTO_HOME/bin/protoc"
-PB_INC="$PROTO_HOME/include"
-PB_LIB="$PROTO_HOME/lib"
+PROTOC="${PROTOC:-protoc}"
 
 CXX="${CXX:-c++}"
 CXXFLAGS="-std=c++17 -O2 -Wall"
+
+# Protobuf toolchain discovered via pkg-config (stock Linux: protobuf.pc is on the
+# default path; conda dev host: export PKG_CONFIG_PATH=<prefix>/lib/pkgconfig).
+pkg-config --exists protobuf || {
+  echo "protobuf not found via pkg-config: install libprotobuf-dev / protobuf-devel, or set PKG_CONFIG_PATH=<prefix>/lib/pkgconfig" >&2
+  exit 1
+}
+PB_CFLAGS="$(pkg-config --cflags protobuf)"      # -I<include>
+PB_LDIRS="$(pkg-config --libs-only-L protobuf)"  # -L<lib>
+PB_LIBDIR="$(pkg-config --variable=libdir protobuf)"
+
 GEN="$ROOT/build/generated"
 BIN="$ROOT/build"
 
 # -I dirs must be a textual prefix of the file args below, so keep them relative
 # (we cd'd into $ROOT) to match "proto/x.proto". All protos live in proto/.
-IPROTO=(-I proto -I "$PB_INC")
-PBFLAGS=(-I "$GEN" -I "$ROOT/src" -I "$PB_INC" -L "$PB_LIB" -lprotobuf -Wl,-rpath,"$PB_LIB")
+IPROTO=(-I proto $PB_CFLAGS)
+PBFLAGS=(-I "$GEN" -I "$ROOT/src" $PB_CFLAGS $PB_LDIRS -lprotobuf -Wl,-rpath,"$PB_LIBDIR")
 
 # Contract protos: --cpp_out only (no ProjectMeta). Add a new system by appending to
 # SYSTEMS; add a shared message by appending to CONTRACT.
@@ -40,8 +48,8 @@ done
 echo "[plug] protoc-gen-meta"
 $CXX $CXXFLAGS \
   src/plugin/protoc-gen-meta.cc "$GEN/metadata_options.pb.cc" \
-  -I "$GEN" -I "$PB_INC" \
-  -L "$PB_LIB" -lprotoc -lprotobuf -Wl,-rpath,"$PB_LIB" \
+  -I "$GEN" $PB_CFLAGS \
+  $PB_LDIRS -lprotoc -lprotobuf -Wl,-rpath,"$PB_LIBDIR" \
   -o "$BIN/protoc-gen-meta"
 
 # 2b. negative codegen: every fixture under tests/negative/ MUST be rejected by the

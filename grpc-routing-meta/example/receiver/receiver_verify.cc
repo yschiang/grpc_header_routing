@@ -9,6 +9,7 @@
 // Here we project an sys1 request (stands in for what the gateway received) and feed
 // the resulting headers back through the parser.
 // =============================================================================
+#include <cassert>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -49,5 +50,17 @@ int main() {
               vr.ok ? "OK (header matches body)" : "FAILED",
               vr.expected_digest.c_str(), vr.actual_digest.c_str());
   if (!vr.ok) std::printf("  error: %s\n", vr.error.c_str());
+
+  // Reject-path regression guard (AD-9): a tampered body MUST fail the digest.
+  if (!contexts.empty()) {
+    auto tampered = contexts;
+    tampered[0] += "&INJECTED=1";                 // header<->body drift
+    auto bad = routingmeta::VerifyDigest(tampered, digest);
+    std::printf("tamper check: %s (expected reject)%s%s\n",
+                bad.ok ? "ACCEPTED (BUG!)" : "rejected",
+                bad.error.empty() ? "" : " — ", bad.error.c_str());
+    assert(!bad.ok);                              // aborts (non-zero) only if the gate regresses
+  }
+
   return vr.ok ? 0 : 1;
 }

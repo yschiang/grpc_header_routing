@@ -74,6 +74,37 @@ int main() {
     assert(!routingmeta::VerifyDigest(cs, dg).ok);                   // tamper detected
   }
 
+  // --- digest gate: accept + every reject form (FR5/AD-9, story 1.11) ---
+  {
+    auto req = sys1Req(2);
+    routingmeta::VectorSink sink;
+    ProjectMeta(req, sink);
+    std::vector<std::string> cs; std::string dg;
+    for (auto& kv : sink.items) {
+      if (kv.first == "x-process-context") cs.push_back(kv.second);
+      else if (kv.first == "x-process-context-digest") dg = kv.second;
+    }
+    // accept
+    auto ok = routingmeta::VerifyDigest(cs, dg);
+    assert(ok.ok);
+    assert(ok.actual_digest == ok.expected_digest);
+    // reject: tampered context value
+    { auto t = cs; t[0] += "&INJECTED=1";
+      auto r = routingmeta::VerifyDigest(t, dg);
+      assert(!r.ok); assert(r.error.find("mismatch") != std::string::npos); }
+    // reject: corrupted digest header, intact body
+    { auto r = routingmeta::VerifyDigest(cs, "sha256:" + std::string(64, '0'));
+      assert(!r.ok); assert(r.actual_digest != r.expected_digest);
+      assert(r.error.find("mismatch") != std::string::npos); }
+    // reject: dropped context (count drift)
+    { auto t = cs; t.pop_back();
+      auto r = routingmeta::VerifyDigest(t, dg);
+      assert(!r.ok); }
+    // reject: no digest provided (overflow / sender omitted)
+    { auto r = routingmeta::VerifyDigest(cs, "");
+      assert(!r.ok); assert(r.error.find("no digest") != std::string::npos); }
+  }
+
   // --- count=0: structure present, no digest / no lines ---
   {
     auto req = sys1Req(0);

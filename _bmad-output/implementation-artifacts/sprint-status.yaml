@@ -62,6 +62,6 @@ development_status:
   1-11-receiver-digest-gate-regression: done
   1-12-canonical-projection-crypto-vectors-regression-guarded: done
   1-13-parser-robustness-lenient-no-crash: done
-  1-14-thread-safe-re-entrant-projection: backlog
+  1-14-thread-safe-re-entrant-projection: review
   1-15-live-docs-match-the-code: backlog
   epic-1-retrospective: optional

@@ -105,5 +105,7 @@ echo "[test] test_projection"
 $CXX $CXXFLAGS tests/test_projection.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BIN/test_projection"
 echo "[bench] bench_projection"
 $CXX $CXXFLAGS tests/bench_projection.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BIN/bench_projection"
+echo "[test] test_concurrency"
+$CXX $CXXFLAGS tests/test_concurrency.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -pthread -o "$BIN/test_concurrency"
 
 echo "OK -> binaries in $BIN/"

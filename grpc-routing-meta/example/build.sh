@@ -78,5 +78,7 @@ echo "[app ] receiver_verify"
 $CXX $CXXFLAGS receiver/receiver_verify.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BIN/receiver_verify"
 echo "[test] test_projection"
 $CXX $CXXFLAGS tests/test_projection.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BIN/test_projection"
+echo "[bench] bench_projection"
+$CXX $CXXFLAGS tests/bench_projection.cc "${GEN_SRCS[@]}" "${PBFLAGS[@]}" -o "$BIN/bench_projection"
 
 echo "OK -> binaries in $BIN/"

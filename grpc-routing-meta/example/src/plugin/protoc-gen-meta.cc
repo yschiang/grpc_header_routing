@@ -184,7 +184,7 @@ class ProjGen : public CodeGenerator {
         const Descriptor* d = file->message_type(i);
         std::vector<Proj> projs; walkProj(d, "", &projs);
         if (projs.empty() && !FindCtx(d)) continue;
-        p.Print("ProjResult ProjectMeta(const $ns$::$m$& req, MetadataSink& sink);\n",
+        p.Print("ProjResult ProjectMeta(const $ns$::$m$& req, MetadataSink& sink, bool emit_digest = true);\n",
                 "ns", ns, "m", d->name());
       }
       p.Print("}  // namespace routingmeta\n");
@@ -209,7 +209,7 @@ class ProjGen : public CodeGenerator {
         const FieldDescriptor* ctxf = FindCtx(d);
         if (projs.empty() && !ctxf) continue;
 
-        p.Print("ProjResult ProjectMeta(const $ns$::$m$& req, MetadataSink& sink) {\n"
+        p.Print("ProjResult ProjectMeta(const $ns$::$m$& req, MetadataSink& sink, bool emit_digest) {\n"
                 "  ProjResult _r;\n"
                 "  const auto _t0 = std::chrono::steady_clock::now();\n",
                 "ns", ns, "m", d->name());
@@ -249,7 +249,7 @@ class ProjGen : public CodeGenerator {
                     "sep", sep, "k", cf[j].first, "g", cf[j].second);
           }
           p.Print("      ctxs.push_back(std::move(s));\n    }\n");
-          p.Print("    if (EmitProcessContexts(sink, ctxs)) _r.issues.push_back({Issue::Overflow, \"\"});\n  }\n");
+          p.Print("    if (EmitProcessContexts(sink, ctxs, emit_digest)) _r.issues.push_back({Issue::Overflow, \"\"});\n  }\n");
         }
         // duration_cast, not implicit conversion: steady_clock::duration -> nanoseconds
         // is only implicitly convertible where it's lossless; cast makes it portable.

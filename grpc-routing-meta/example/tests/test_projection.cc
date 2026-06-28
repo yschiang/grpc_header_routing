@@ -112,6 +112,23 @@ int main() {
     assert(!routingmeta::VerifyDigest(cs, dg).ok);                   // drift detected (modified context)
   }
 
+  // --- send-time digest OFF via ProjectMeta(req, sink, false): contexts emitted, no digest,
+  //     count / format / overflow unaffected, receiver verify-if-present returns OK (inv. 6) ---
+  {
+    auto req = sys1Req(2);
+    routingmeta::VectorSink sink;
+    routingmeta::ProjResult r = ProjectMeta(req, sink, /*emit_digest=*/false);
+    assert(r.ok);
+    assert(sink.Get("x-process-context-digest").empty());           // no digest header
+    assert(sink.Count("x-process-context") == 2);                   // context lines unaffected
+    assert(sink.Get("x-process-context-count") == "2");             // count unaffected
+    assert(sink.Get("x-process-context-format") == "urlencoded-query-string-v1");
+    std::vector<std::string> cs;
+    for (auto& kv : sink.items)
+      if (kv.first == "x-process-context") cs.push_back(kv.second);
+    assert(routingmeta::VerifyDigest(cs, sink.Get("x-process-context-digest")).ok);  // absent -> OK
+  }
+
   // --- count=0: structure present, no digest / no lines ---
   {
     auto req = sys1Req(0);

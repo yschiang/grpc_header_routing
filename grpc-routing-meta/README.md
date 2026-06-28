@@ -37,6 +37,12 @@ routingmeta::ProjResult Send(const Req& req, const Runtime& rt, MetadataSink& si
 `ProjectMeta` is generated per request type by `example/src/plugin/protoc-gen-meta.cc`.
 Adding a 4th system (or a 16th method) = one proto + one line in the build list.
 
+**Wiring contract.** Call `FillCommon(rt, sink)` then `ProjectMeta(req, sink)` on the
+*same* sink; read the returned `ProjResult` and decide abort/proceed yourself. Those two
+calls — plus `ProjResult` and `MetadataSink` — are the whole kit surface. `Send` above is
+a Sender-owned convenience wrapper, **not** part of the kit (see
+[`docs/adr/0001-send-ownership-stays-in-sender.md`](docs/adr/0001-send-ownership-stays-in-sender.md)).
+
 ## Size guard (no silent failures)
 
 gRPC bounds total metadata; exceeding it makes APISIX/HTTP2 reset or truncate the

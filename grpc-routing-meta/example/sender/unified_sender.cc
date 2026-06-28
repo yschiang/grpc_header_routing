@@ -28,11 +28,12 @@
 #include "sys2.proj.h"
 #include "sys3.proj.h"
 
-// [+meta] The Sender's OWN one-call orchestration. The kit (lib) guarantees the
-// building blocks — FillCommon (common headers) + generated ProjectMeta (body
-// projection) -> ProjResult — but COMPOSING them, and deciding what to do with the
-// result (abort vs proceed), is the Sender's job, not the lib's. One path, no
-// per-system branching; the ProjectMeta overload is chosen by Req via ADL.
+// [+meta] SAMPLE wiring — your sender team owns the real Send; the kit only
+// guarantees the two building blocks (FillCommon + ProjectMeta -> ProjResult).
+// This local Send is the Sender's OWN one-call orchestration: COMPOSING the two
+// lib calls, and deciding what to do with the result (abort vs proceed), is the
+// Sender's job, not the lib's. One path, no per-system branching; the ProjectMeta
+// overload is chosen by Req via ADL. (See docs/adr/0001-send-ownership-stays-in-sender.md.)
 template <class Req>
 static routingmeta::ProjResult Send(const Req& req, const Runtime& rt,
                                     routingmeta::MetadataSink& sink) {

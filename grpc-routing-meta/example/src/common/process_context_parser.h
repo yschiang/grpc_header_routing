@@ -18,6 +18,13 @@
 namespace routingmeta {
 
 // URL-decode (inverse of UrlEncode): %XX -> byte, leave others as-is.
+//
+// Lenient by construction (SPEC §6): a malformed escape is passed through
+// LITERALLY and never crashes. The `i + 2 < in.size()` bound makes a trailing
+// or truncated `%` (e.g. "R%", "%2") read out of range impossible, and the
+// `hi >= 0 && lo >= 0` guard rejects non-hex digits (e.g. "%2G", "%ZZ"),
+// emitting the `%` and its trailing chars verbatim. Both upper- and lower-case
+// hex decode ("%2F" and "%2f" -> '/').
 inline std::string UrlDecode(const std::string& in) {
   std::string out;
   out.reserve(in.size());
@@ -42,6 +49,13 @@ inline std::string UrlDecode(const std::string& in) {
 }
 
 // Parse one "k=v&k=v" context string into an ordered key->value map (decoded).
+//
+// Lenient: a pair without '=' is SKIPPED (not inserted); the first '=' splits
+// key/value so values may themselves contain '=' ("k=v=w" -> k->"v=w"). Keys
+// and values are UrlDecode'd, so malformed escapes pass through literally.
+// Because the backing store is std::map, a DUPLICATE KEY is LAST-WINS: each
+// pair assigns kv[key], so the final occurrence overwrites earlier ones
+// ("K=a&K=b&K=c" -> K->"c").
 inline std::map<std::string, std::string> ParseContext(const std::string& ctx) {
   std::map<std::string, std::string> kv;
   size_t i = 0;

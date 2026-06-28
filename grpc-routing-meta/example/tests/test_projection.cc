@@ -381,6 +381,57 @@ int main() {
     assert(sink.Get("x-process-context-overflow") == "true");
     assert(sink.Count("x-process-context") == 0); }
 
+  // ===========================================================================
+  // Story 1.13 — parser robustness (lenient, no-crash). Receiver-side LOCK: the
+  // parser is lenient by construction; these non-vacuous asserts PROVE it. No
+  // sender/wire/projection byte changes — UrlDecode/ParseContext/VerifyDigest
+  // never touch emitted bytes. "No crash" is proven by reaching ALL TESTS PASSED.
+  // ===========================================================================
+
+  // --- 1.13 Task 1: malformed %-escape passes through LITERALLY (AC1, HR2) ---
+  // Traced against UrlDecode: bound `i+2 < size` makes trailing/truncated `%`
+  // un-decodable; guard `hi>=0 && lo>=0` rejects non-hex (SPEC §6).
+  assert(routingmeta::UrlDecode("R%") == "R%");                  // trailing %
+  assert(routingmeta::UrlDecode("%") == "%");
+  assert(routingmeta::UrlDecode("%2") == "%2");                  // truncated (only 1 trailing char)
+  assert(routingmeta::UrlDecode("a%2") == "a%2");
+  assert(routingmeta::UrlDecode("%2G") == "%2G");                // non-hex lo
+  assert(routingmeta::UrlDecode("%G2") == "%G2");                // non-hex hi
+  assert(routingmeta::UrlDecode("%ZZ") == "%ZZ");
+  assert(routingmeta::UrlDecode("%2F") == "/");                  // well-formed UPPER hex
+  assert(routingmeta::UrlDecode("%2f") == "/");                  // well-formed lower hex
+  assert(routingmeta::UrlDecode("a%2Fb%ZZc%") == "a/b%ZZc%");    // valid + bad + trailing
+  // same leniency reached through ParseContext (decodes key+value)
+  assert(routingmeta::ParseContext("RecipeID=R%2FA")["RecipeID"] == "R/A");
+  assert(routingmeta::ParseContext("RecipeID=R%ZZ")["RecipeID"] == "R%ZZ");
+
+  // --- 1.13 Task 2: duplicate keys -> last-wins (std::map assignment) (AC2) ---
+  assert(routingmeta::ParseContext("RecipeID=A&RecipeID=B")["RecipeID"] == "B");
+  assert(routingmeta::ParseContext("K=a&K=b&K=c")["K"] == "c");   // 3-way
+  { auto m = routingmeta::ParseContext("K=a&K=b&Other=x");        // unrelated key unaffected
+    assert(m["K"] == "b"); assert(m["Other"] == "x"); assert(m.size() == 2); }
+
+  // --- 1.13 Task 3: garbled corpus -> no crash, exact maps (AC3) ---
+  assert(routingmeta::ParseContext("").empty());                 // size 0
+  assert(routingmeta::ParseContext("%").empty());                // no '=' -> skipped
+  assert(routingmeta::ParseContext("%%%").empty());
+  assert(routingmeta::ParseContext("&&&").empty());              // all empty pairs, no '='
+  { auto m = routingmeta::ParseContext("&=&=&");                 // pairs "=" -> ""->""
+    assert(m.size() == 1); assert(m[""] == ""); }
+  { auto m = routingmeta::ParseContext("=");  assert(m.size() == 1); assert(m[""] == ""); }
+  { auto m = routingmeta::ParseContext("=v"); assert(m.size() == 1); assert(m[""] == "v"); }
+  { auto m = routingmeta::ParseContext("k="); assert(m.size() == 1); assert(m["k"] == ""); }
+  assert(routingmeta::ParseContext("k").empty());                // no '=' -> skipped
+  assert(routingmeta::ParseContext("k=v=w")["k"] == "v=w");      // first '=' splits
+  // high-byte raw value: non-'%' bytes pass through unchanged
+  assert(routingmeta::ParseContext(std::string("k=") + "\xC3\xA9")["k"] == "\xC3\xA9");
+  // long value: no truncation / overflow
+  assert(routingmeta::ParseContext("k=" + std::string(5000, 'x'))["k"].size() == 5000);
+  // VerifyDigest robustness: errors-as-data, never throws
+  assert(routingmeta::VerifyDigest({}, "").ok == false);
+  assert(routingmeta::VerifyDigest({"garb=%", "x"},
+                                   "sha256:" + std::string(64, '0')).ok == false);
+
   std::printf("ALL TESTS PASSED\n");
   return 0;
 }

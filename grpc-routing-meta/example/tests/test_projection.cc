@@ -135,6 +135,24 @@ int main() {
     assert(s2.Get("x-mask-id").empty());                           // empty scalar NOT emitted
   }
 
+  // --- co-occurrence: missing required scalar AND overflow -> both issues, ok=false ---
+  {
+    sys3::v1::Submit05Request req;                          // mask_id left empty (required)
+    for (int i = 0; i < 30; ++i) req.add_contexts();        // >25 contexts -> overflow
+    routingmeta::VectorSink sink;
+    auto r = ProjectMeta(req, sink);
+    assert(!r.ok);                                          // blocking missing-required dominates
+    assert(r.issues.size() == 2);                          // MissingRequired + non-blocking Overflow
+    assert(sink.Get("x-routing-error") == "missing:x-mask-id");
+    assert(sink.Get("x-process-context-overflow") == "true");
+    bool hasMissing = false, hasOverflow = false;
+    for (const auto& is : r.issues) {
+      hasMissing  |= is.kind == routingmeta::Issue::MissingRequired;
+      hasOverflow |= is.kind == routingmeta::Issue::Overflow;
+    }
+    assert(hasMissing && hasOverflow);                     // both reported, order-independent
+  }
+
   // --- empty fields project as `Key=` (present-but-empty); digest round-trips (inv. 1) ---
   {
     sys1::v1::CalculateRequest req;

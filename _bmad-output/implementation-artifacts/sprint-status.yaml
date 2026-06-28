@@ -50,7 +50,7 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-projectmeta-returns-projresult-no-throw: done
-  1-2-overflow-surfaces-as-non-blocking-data: review
+  1-2-overflow-surfaces-as-non-blocking-data: done
   1-3-one-coherent-routingmeta-namespace-resolved-by-adl: backlog
   1-4-one-branchless-routingmeta-send-lives-in-the-kit: backlog
   1-5-single-source-the-hpack-overhead-constant: backlog

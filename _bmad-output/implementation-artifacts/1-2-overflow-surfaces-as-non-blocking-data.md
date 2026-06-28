@@ -4,7 +4,7 @@ baseline_commit: db5fc592ee7920b61ef79d46dd9acb5b1f460a9b
 
 # Story 1.2: Overflow surfaces as non-blocking data
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -47,6 +47,16 @@ so that routing still proceeds but the overflow is observable, never silently dr
   - [x] `cd grpc-routing-meta/example && ./build.sh` (rebuilds plugin, regenerates `*.proj.*`, links binaries).
   - [x] `./build/test_projection` → `ALL TESTS PASSED`.
   - [x] `./build/unified_sender` + `./build/receiver_verify` → run clean; the 60-context overflow demo block still prints `x-process-context-overflow: true` with no other wire change (CR1).
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). 1 patch, 0 decision-needed, 2 deferred, 1 dismissed. Blind Hunter: no defects. Acceptance Auditor: PASS — all 3 ACs met, wire/policy/scope intact._
+
+- [x] [Review][Patch] Pin the missing-required + overflow co-occurrence with a test [grpc-routing-meta/example/tests/test_projection.cc] — RESOLVED: added a sys3 case (empty `x-mask-id` + 30 contexts) asserting `ok==false`, `issues.size()==2`, both `MissingRequired` and `Overflow` present (order-independent), plus `x-routing-error` + `x-process-context-overflow` headers. `ALL TESTS PASSED`.
+- [x] [Review][Defer] Exact-threshold boundary cases (count==25, value==512, bytes==7168) are unpinned [grpc-routing-meta/example/tests/test_projection.cc] — deferred to **Story 1.12** (projection test hardening); the limits/conditions are unchanged by 1.2 and current tests use 30 / 600 / ~9 KB. A future `>`→`>=` slip would pass.
+- [x] [Review][Defer] Demo `Send` discards `ProjResult`, so the `Issue{Overflow}` reaches no consumer [grpc-routing-meta/example/sender/unified_sender.cc:35] — deferred to **Story 1.4** (caller acts on `ok`/`issues`); already logged from the 1.1 review. `[[nodiscard]]` is intentionally NOT added — CR2/AD-10 requires the return to stay discardable.
+
+_Dismissed (1): add `[[nodiscard]]` to `ProjResult`/`ProjectMeta` — contradicts CR2/AD-10 (existing call sites must be able to ignore the return)._
 
 ## Dev Notes
 
@@ -147,3 +157,4 @@ claude-opus-4-8[1m] (Amelia / Senior Software Engineer)
 ## Change Log
 
 - 2026-06-28 — Story 1.2 implemented: overflow surfaces as a non-blocking `Issue{Overflow}` in `ProjResult` (`ok` stays `true`); `EmitProcessContexts` returns the overflow signal, generated `ProjectMeta` records it. Wire unchanged (CR1). All ACs met; full suite green, no regression (FR3; AD-5/AD-7/AD-9).
+- 2026-06-28 — Code review: 1 patch applied (co-occurrence test pinning missing-required + overflow → both issues, `ok=false`), 2 deferred (threshold boundaries → 1.12; caller-consumes-result → 1.4), 1 dismissed (`[[nodiscard]]` would break CR2). Status → done.

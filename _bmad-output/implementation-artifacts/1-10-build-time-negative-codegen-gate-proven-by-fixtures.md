@@ -4,7 +4,7 @@ baseline_commit: 3285bbd5bef53375056da3f49bea6f42cf71eec1
 
 # Story 1.10: Build-time negative-codegen gate, proven by fixtures
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -49,6 +49,12 @@ so that a bad `(routing.project)` never reaches the Sender.
   - [x] Confirm the rejection reason is the duplicate-key check (not a spurious one): run the plugin directly on the fixture and check stderr — `"$PROTOC" -I proto -I "$(pkg-config --variable=includedir protobuf)" -I tests/negative --plugin=protoc-gen-meta=build/protoc-gen-meta --meta_out=build/generated tests/negative/bad_duplicate_key.proto` → non-zero exit, stderr contains `duplicate (routing.project) key "x-mask-id" in message BadDuplicateKey`.
   - [x] **AC3 (no false positive):** the valid `sys1`/`sys2`/`sys3` protos still codegen successfully in the same `build.sh` run (they always have — the build aborts if any valid proto is rejected). The duplicate-key check is **per-message** (`keys` is local to each `Validate(message)` call, `protoc-gen-meta.cc:150`), so the SAME key in two DIFFERENT messages is intentionally allowed and does not false-positive — note this; it is why the sys protos (each projecting its own keys) pass.
   - [x] Regression: `./build/test_projection` → `ALL TESTS PASSED`; `./build/bench_projection` → `BENCH PASSED`; `./build/receiver_verify` → digest OK. (No code/wire change in this story; these are unchanged.)
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter [diff-only] + combined Edge+Acceptance reviewer [diff+repo+ran build/plugin], no shared context). 0 patch, 1 deferred, 0 dismissed. **Both PASS — AC tally 3/3.** The fixture is verified correct and well-targeted: two non-repeated `string` scalars with DISTINCT field names (`mask_id`/`mask_id_2`) but the SAME projected key (`x-mask-id`), so `ProjectOnlyOnScalarLeaf` and `NoProjectUnderRepeated` pass by construction and the duplicate-key `std::set` branch is the SOLE trigger (robust even to guard reordering). The direct plugin run confirms the SEMANTIC error (`duplicate (routing.project) key …`), not a parse/import error. AC1's four shapes now fully cover SPEC §9; AC3 per-message scoping independently re-proven (same key in two messages → codegens, exit 0)._
+
+- [x] [Review][Defer] **Negative gate asserts exit-code only, not the rejection REASON** → Story 1.12 (negative-gate hardening). Both reviewers independently flagged it: `build.sh`'s `[neg ]` loop checks only that codegen exits non-zero (`>/dev/null 2>&1`), not WHY — so a future edit breaking a fixture's `import`/syntax/`(routing.project)` name would still exit non-zero and the gate would stay green for the WRONG reason, silently ceasing to test the intended branch. Affects ALL four fixtures; pre-existing, NOT introduced by 1.10. Fix in 1.12: grep codegen stderr for each fixture's expected per-branch message substring. Out of 1.10's fixture-only scope (the story guardrails forbid editing `build.sh`); 1.12 owns negative-gate hardening. Logged in `deferred-work.md`.
 
 ## Dev Notes
 
@@ -129,3 +135,4 @@ claude-opus-4-8[1m] (Amelia / Senior Software Engineer) — fixture authored by 
 
 - 2026-06-28 — Story 1.10 drafted (create-story): add the missing `tests/negative/bad_duplicate_key.proto` fixture (two scalar leaves, same projected key) to complete AC1's four malformed shapes. The plugin's `Validate()` already rejects duplicate keys (`protoc-gen-meta.cc:150-156`) and `build.sh`'s `[neg ]` gate globs the dir — so this is a one-fixture coverage story proving an existing guard; no plugin/build/code change. AC3 (no false positive) covered by the existing valid sys1/2/3 codegen + the per-message scoping of the check.
 - 2026-06-28 — Story 1.10 implemented (dev-story): NEW `tests/negative/bad_duplicate_key.proto`. Gate rejects all four fixtures (build stays green, reaches `OK -> binaries`); direct plugin run confirms the duplicate-key error is the sole reason (exit 1); per-message false-positive probe (same key in two messages) codegens (exit 0); regression binaries green. Fixture only — no plugin/build/code/wire change. Engineering by a subagent, independently re-verified in the main loop. Status → review.
+- 2026-06-28 — Story 1.10 code review (Blind diff-only + combined Edge+Acceptance, no shared context): both PASS, 3/3 ACs; fixture verified well-targeted (sole trigger = duplicate-key branch, semantic error not parse error). 0 patch, 1 deferred (the `[neg ]` gate asserts exit-code only, not the rejection reason → Story 1.12 hardening; pre-existing, affects all fixtures), 0 dismissed. Status → done.

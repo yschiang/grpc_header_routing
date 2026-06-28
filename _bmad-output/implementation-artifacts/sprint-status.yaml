@@ -58,7 +58,7 @@ development_status:
   1-7-bench-projection-proves-sub-millisecond: done
   1-8-portable-build-no-machine-specific-paths: done
   1-9-proven-on-a-pinned-ci-matrix: done
-  1-10-build-time-negative-codegen-gate-proven-by-fixtures: review
+  1-10-build-time-negative-codegen-gate-proven-by-fixtures: done
   1-11-receiver-digest-gate-regression: backlog
   1-12-canonical-projection-crypto-vectors-regression-guarded: backlog
   1-13-parser-robustness-lenient-no-crash: backlog

@@ -4,6 +4,5 @@ The project lives in [`grpc-routing-meta/`](grpc-routing-meta/) — a C++ kit th
 projects gRPC routing metadata out of the protobuf body (a `protoc` plugin + one
 unified sender), so APISIX can route on headers that can never drift from the body.
 
-- Overview: [`grpc-routing-meta/README.md`](grpc-routing-meta/README.md) · 中文 [`OVERVIEW.zh.md`](grpc-routing-meta/OVERVIEW.zh.md)
-- Design + testable invariants: [`grpc-routing-meta/CONTEXT.md`](grpc-routing-meta/CONTEXT.md)
+- Overview: [`grpc-routing-meta/README.md`](grpc-routing-meta/README.md)
 - Runnable example: [`grpc-routing-meta/example/`](grpc-routing-meta/example/)

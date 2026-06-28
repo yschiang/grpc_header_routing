@@ -70,8 +70,6 @@ on Protobuf 3.20.3 and 3.21.12.
 
 ```
 README.md          this overview
-SPEC.md            normative wire contract (headers, encoding, digest, overflow)
-CONTEXT.md         project context, requirements, testable invariants
 example/
   proto/           metadata_options, process_context, sys1, sys2, sys3
   src/plugin/      protoc-gen-meta.cc        (codegen)

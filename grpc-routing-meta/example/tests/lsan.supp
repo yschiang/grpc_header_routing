@@ -1,0 +1,13 @@
+# LeakSanitizer suppressions (Linux CI ASan cell).
+#
+# protobuf keeps process-lifetime global state alive — the descriptor pool,
+# generated-message default instances, the reflection factory — all lazily
+# initialized and never freed by design. LSan reports these as leaks at exit,
+# in both the codegen plugin and the test binaries. They are NOT our leaks.
+#
+# The kit itself (sha256 / url_encode / process_context_parser / _emit / sink)
+# does no manual memory management — every allocation is a std::string/vector
+# that RAII-frees. So suppressing protobuf-origin leaks still leaves any real
+# leak introduced in the kit visible to LSan.
+leak:libprotobuf
+leak:google::protobuf

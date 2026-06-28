@@ -87,3 +87,71 @@ jobs:
           EOF
           g++ -std=c++17 -I src grpc_smoke.cc $(pkg-config --cflags --libs grpc++ protobuf) -o grpc_smoke
           ./grpc_smoke
+
+  sanitizers:
+    name: ASan+UBSan+LSan (clang)
+    runs-on: ubuntu-22.04
+    # The digest/encode/parser are hand-rolled C++ on raw bytes — exactly where
+    # overruns and UB hide. Build the plugin + binaries instrumented and run them.
+    env:
+      CXX: clang++
+      CXXFLAGS: "-std=c++17 -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined"
+      # ASan on Linux includes LSan. protobuf's process-lifetime globals are not
+      # our leaks — suppress them (file documents why). Applies to the codegen
+      # plugin subprocess too, so positive codegen still exits 0.
+      ASAN_OPTIONS: "detect_leaks=1"
+      LSAN_OPTIONS: "suppressions=tests/lsan.supp"
+      UBSAN_OPTIONS: "print_stacktrace=1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protobuf + clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang pkg-config \
+            protobuf-compiler libprotobuf-dev libprotoc-dev
+      - name: build.sh under ASan+UBSan (incl. negative gate)
+        working-directory: grpc-routing-meta/example
+        run: ./build.sh
+      - name: Run binaries + tests under ASan+UBSan+LSan
+        working-directory: grpc-routing-meta/example
+        run: |
+          ./build/test_projection
+          ./build/unified_sender
+          ./build/receiver_verify
+
+  tsan:
+    name: ThreadSanitizer (concurrent ProjectMeta)
+    runs-on: ubuntu-22.04
+    # ProjectMeta is claimed re-entrant (no shared mutable state). test_projection's
+    # concurrency block runs it on N threads with distinct sinks and asserts a single
+    # golden digest — run that under TSan to prove the claim.
+    env:
+      CXX: clang++
+      CXXFLAGS: "-std=c++17 -O1 -g -fno-omit-frame-pointer -fsanitize=thread"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protobuf + clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang pkg-config \
+            protobuf-compiler libprotobuf-dev libprotoc-dev
+      - name: build.sh under TSan
+        working-directory: grpc-routing-meta/example
+        run: ./build.sh
+      - name: Run concurrency test under TSan
+        working-directory: grpc-routing-meta/example
+        run: ./build/test_projection
+
+  coverage:
+    name: Coverage floor (hand-written src/)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protobuf + gcovr
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config gcovr \
+            protobuf-compiler libprotobuf-dev libprotoc-dev
+      - name: Coverage gate (src/ >= 80% lines)
+        working-directory: grpc-routing-meta/example
+        run: CXX=g++ ./coverage.sh

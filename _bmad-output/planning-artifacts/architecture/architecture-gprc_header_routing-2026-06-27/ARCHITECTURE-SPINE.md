@@ -7,7 +7,7 @@ paradigm: codegen-driven projection pipeline (body-authoritative)
 scope: Productionize the grpc-routing-meta kit (example-grade -> production-grade) across epics E1-E5
 status: final
 created: 2026-06-27
-updated: 2026-06-27
+updated: 2026-06-28
 binds: [E1, E2, E3, E4, E5]
 sources: [refs/BRIEF.md, refs/SPEC.md, refs/CONTEXT.md, refs/plan.md, _bmad-output/planning-artifacts/PRD.md]
 companions: [refs/SPEC.md]
@@ -27,20 +27,19 @@ decisions are locked: any AD that deviates MUST name the specific plan.md decisi
 overrides and carry a **PENDING-RATIFICATION** status — no silent deviation. Read-only
 guardrails (CR3 `refs/` read-only; no push to any remote) are recorded in Conventions.
 
-**One declared deviation stands:** **AD-4** keeps `Send` orchestration out of the kit,
-which overrides **plan.md P0.3 ("promote `Send` into kit")** and the plan.md pivot API.
-This was an explicit product/architecture choice (the lib reports, the consumer
-orchestrates); it is marked PENDING-RATIFICATION and carries a downstream PM action:
-relax PRD **FR6 / G-E** ("`Send` defined in the kit") via `bmad-edit-prd` before stories
-are built. The read-only BRIEF criterion E is location-agnostic and is unaffected.
+**No deviations stand.** The spine is in full fidelity to plan.md, including **P0.3
+("promote `Send` into kit")** — see AD-4. (An earlier draft kept `Send` *out* of the kit;
+that deviation was **withdrawn on 2026-06-28 per j**, reverting to plan.md P0.3 to keep the
+scored run clean. The downstream PRD v0.3 and epics.md, which had moved to "no `Send` symbol",
+must be reverted in step — see **Pending Actions**.)
 
 ## Design Paradigm
 
 **Codegen-driven projection pipeline, body-authoritative.** A `protoc` plugin
 (`protoc-gen-meta`) generates `ProjectMeta(req, sink)`, which projects the protobuf body into
 routing headers; a `MetadataSink` abstracts the transport (test `VectorSink` / production
-`GrpcSink`); one shared policy header centralizes the limits. The lib **populates + reports**;
-the consumer **orchestrates + decides** (SPEC §7, "report, don't dictate").
+`GrpcSink`); one shared policy header centralizes the limits. The lib **populates, orchestrates
+(one `Send`), and reports**; the consumer **decides** abort/proceed (SPEC §7, "report, don't dictate").
 
 ```mermaid
 graph LR
@@ -63,7 +62,8 @@ Namespace / ownership map:
 | per-system protos (annotations only) | `proto/sysN.proto`, package `sysN.v1` | each system owner |
 | plugin + generated projection | `src/plugin/`, generated `*.proj.*` → `namespace routingmeta` | Sys teams (shared lib) |
 | kit core (sink, policy, ProjResult, digest, encode) | `src/common/` → `namespace routingmeta` | Sys teams (shared lib) |
-| `Send` orchestration + caller policy | Sender app (demo: `sender/`) | **Sender team** |
+| `Send` (one branchless wrapper, returns `ProjResult`) | `src/common/` → `namespace routingmeta` | Sys teams (shared lib) |
+| abort/proceed decision (reads `ok` / `issues`) | consumer code | **Sender team** |
 
 ## Invariants & Rules
 
@@ -76,7 +76,7 @@ graph TD
   PLUGIN["protoc-gen-meta (Sys teams)"] --> SHARED
   GEN["generated sysN.proj.* (namespace routingmeta)"] --> KITCORE["routingmeta kit core<br/>sink · policy · ProjResult · digest · encode"]
   GEN --> SYSPB["sysN.pb (messages)"]
-  SENDER["Sender: Send orchestration + caller policy"] --> GEN
+  SENDER["Consumer: calls routingmeta::Send; owns abort/proceed"] --> GEN
   SENDER --> KITCORE
   RECV["receiver_verify"] --> KITCORE
 ```
@@ -89,28 +89,27 @@ graph TD
 ### AD-2 — One coherent lib namespace
 - **Binds:** plugin output + all kit hand-written surface
 - **Prevents:** a distributed lib's surface scattering across per-system namespaces it doesn't own
-- **Rule:** generated `ProjectMeta` and every kit symbol (`Send` is **not** one — see AD-4) MUST be declared in `namespace routingmeta`. Generated `*.proj.h` wraps its output in `routingmeta` and `#include`s the kit headers. **Currently global (must all move):** the generated `ProjectMeta` *and* `struct Runtime` + `FillCommon` in `common_headers.h` are presently at file scope; moving them together is consistent and lets the demo `Send`'s unqualified `FillCommon(rt, sink)` resolve by the same ADL-on-sink mechanism as `ProjectMeta` (AD-3).
+- **Rule:** generated `ProjectMeta` and every kit symbol (including `Send`, see AD-4) MUST be declared in `namespace routingmeta`. Generated `*.proj.h` wraps its output in `routingmeta` and `#include`s the kit headers. **Currently global (must all move):** the generated `ProjectMeta` *and* `struct Runtime` + `FillCommon` in `common_headers.h` are presently at file scope; moving them together is consistent and lets `Send`'s unqualified `FillCommon(rt, sink)` resolve by the same ADL-on-sink mechanism as `ProjectMeta` (AD-3).
 
 ### AD-3 — `ProjectMeta` resolved by ADL on the sink argument
 - **Binds:** the sender path; consumer-written `Send`
 - **Prevents:** `Send` needing per-type includes/qualification; ADL being defeated by a proto's package declaration
 - **Rule:** a caller's `Send` calls **unqualified** `ProjectMeta(req, sink)`; resolution is ADL on the `routingmeta::MetadataSink` argument, which is **always** a `routingmeta` type. (Resolution MUST NOT depend on the request's package namespace.)
 
-### AD-4 — Lib contract = populate + report; orchestration is the Sender's `[DECIDED — DEVIATES FROM plan.md P0.3; PENDING CROSS-TEAM RATIFICATION]`
-- **Binds:** the public API; E1; FR1/FR6
-- **Prevents:** the lib over-reaching into send orchestration; consumers diverging on projection
-- **Rule:** the lib guarantees ONLY (a) correct metadata population (`FillCommon` + generated `ProjectMeta`) and (b) structured reporting (`ProjResult`). The kit ships **no `Send` symbol**; `Send` orchestration and the abort/proceed decision are the Sender's. The `Send` example lives in the demo (`unified_sender.cc`) / README. Because FR1's no-throw guarantee binds **both** `ProjectMeta` and `Send`, the demo `Send` is **also** held to no-throw-on-data (it propagates `ProjResult`; see AD-5).
-- **Declared deviation:** this overrides **plan.md P0.3 ("promote `Send` into kit")** and the plan.md "pivot API change" (which lists `template<class Req> ProjResult Send(...)` as a kit symbol). This is *not* merely a PRD conflict — the higher-authority conflict is with the locked plan. BRIEF criterion E is location-agnostic and is **not** violated. Status is PENDING-RATIFICATION: the deviation is routed through the cross-team ratification plan.md reserves, and the downstream PRD reconciliation (relax FR6/G-E) is owned by the PM (`bmad-edit-prd`).
+### AD-4 — One sender path lives in the kit; caller owns the abort/proceed decision `[ADOPTED — per plan.md P0.3]`
+- **Binds:** the public API; E1; FR6
+- **Prevents:** each consumer hand-rolling a divergent `Send`; the lib dictating the abort/proceed decision
+- **Rule:** the kit ships a single **branchless** `routingmeta::Send` template = `FillCommon` + generated `ProjectMeta`, returning `ProjResult`, **no-throw-on-data**, serving sys1/sys2/sys3 with zero `if (system==…)`. Per **plan.md P0.3 ("promote `Send` into kit")** and the plan.md pivot API (`template<class Req> ProjResult Send(const Req&, const Runtime&, MetadataSink&)`). The kit guarantees **population** (`ProjectMeta`) + **orchestration** (one `Send`) + **reporting** (`ProjResult`); the caller owns only the **abort/proceed decision** — it reads `ok` / `issues` and chooses (SPEC §7, "report, don't dictate"). `unified_sender.cc` becomes a thin demo that *calls* `routingmeta::Send`, not its home.
 
 ### AD-5 — Failure-as-data: no throw on a data condition
-- **Binds:** `ProjectMeta` **and** the demo `Send` (AD-4), E1; FR1/FR2/FR3
+- **Binds:** `ProjectMeta` **and** the kit's `Send` (AD-4), E1; FR1/FR2/FR3
 - **Prevents:** a throw being the failure channel (example-grade behavior)
-- **Rule:** `ProjectMeta` MUST NOT throw on a data condition. It returns `routingmeta::ProjResult { bool ok; std::vector<Issue> issues; std::chrono::nanoseconds duration; }`. Missing **required** scalar → `Issue{MissingRequired, key}` + `ok=false` + emit `x-routing-error: missing:<key>`, and NOT the empty header. Overflow → `Issue{Overflow}`, `ok` stays `true`, alongside `x-process-context-overflow: true`. FR1 binds the no-throw guarantee to **both** `ProjectMeta` and `Send`: since `Send` lives in the demo (AD-4), the demo `Send` MUST also not throw on a data condition — it propagates the `ProjResult` to the caller, which owns abort/proceed.
+- **Rule:** `ProjectMeta` MUST NOT throw on a data condition. It returns `routingmeta::ProjResult { bool ok; std::vector<Issue> issues; std::chrono::nanoseconds duration; }`. Missing **required** scalar → `Issue{MissingRequired, key}` + `ok=false` + emit `x-routing-error: missing:<key>`, and NOT the empty header. Overflow → `Issue{Overflow}`, `ok` stays `true`, alongside `x-process-context-overflow: true`. FR1 binds the no-throw guarantee to **both** `ProjectMeta` and `Send`: the kit's `Send` (AD-4) MUST also not throw on a data condition — it propagates the `ProjResult` to the caller, which owns abort/proceed.
 
 ### AD-6 — `duration` is self-timed by `ProjectMeta`
 - **Binds:** `ProjResult.duration`; E2; FR7/criterion H
 - **Prevents:** two timing points (Send vs ProjectMeta) populating `duration` inconsistently
-- **Rule:** `ProjectMeta` self-times its own projection and populates `ProjResult.duration`. `bench_projection` measures `ProjectMeta` directly and **asserts sub-millisecond for 1 / 2 / 25 / 60 contexts** (BRIEF H / FR7 acceptance bar). A consumer's `Send` does not time; it reads `ProjResult` to decide.
+- **Rule:** `ProjectMeta` self-times its own projection and populates `ProjResult.duration`. `bench_projection` measures `ProjectMeta` directly and **asserts sub-millisecond for 1 / 2 / 25 / 60 contexts** (BRIEF H / FR7 acceptance bar). The kit's `Send` (AD-4) propagates `ProjectMeta`'s `ProjResult` unchanged — it does **not** separately time; one timing point only.
 
 ### AD-7 — Centralized policy; one definition per constant `[ADOPTED + sharpen]`
 - **Binds:** F/NFR6
@@ -185,7 +184,7 @@ example/
     common/           # routingmeta kit: metadata_sink, process_context_emit (policy),
                       #   url_encode, sha256, process_context_parser, common_headers (FillCommon),
                       #   proj_result.h  <- NEW: ProjResult / Issue
-  sender/             # unified_sender.cc — demo Send orchestration (Sender-owned example)
+  sender/             # unified_sender.cc — thin demo calling routingmeta::Send
   receiver/           # receiver_verify.cc — digest round-trip
   tests/              # test_projection.cc + bench_projection (NEW) + negative/*.proto
 .github/workflows/    # CI matrix (NEW)
@@ -199,7 +198,7 @@ example/
 | B Proven matrix | `.github/workflows/` | AD-14 |
 | C No silent failure | plugin `Validate`, `ProjectMeta`, `EmitProcessContexts`, receiver | AD-5, AD-8, AD-9 |
 | D Exact projection | generated `ProjectMeta`, `url_encode`, `sha256` | AD-1, conventions |
-| E One sender path | generated `ProjectMeta` (branchless) | AD-1, AD-3, AD-4 |
+| E One sender path | `routingmeta::Send` + generated `ProjectMeta` (branchless) | AD-1, AD-3, AD-4 |
 | F Policy centralized | `process_context_emit.h` | AD-7 |
 | G Testable invariants | `test_projection`, `tests/negative/`, receiver parser negative tests (HR2) | AD-8, AD-12, conventions (Parser robustness) |
 | H Perf observed | `ProjResult.duration`, `bench_projection` | AD-6 |
@@ -207,14 +206,15 @@ example/
 
 ## Pending Actions (gate epics/stories)
 
-- **PRD reconciliation — relax FR6 / G-E (owner: PM, `bmad-edit-prd`).** AD-4 keeps `Send`
-  out of the kit; PRD FR6/G-E still say "`Send` defined in the kit." The PM MUST relax FR6/G-E
-  to "lib = populate + report; `Send` orchestration is the Sender's; kit ships no `Send` symbol"
-  **before** `bmad-create-epics-and-stories`, so E1's stories build on a consistent contract.
-  Read-only BRIEF criterion E is untouched (location-agnostic).
-- **AD-4 cross-team ratification.** AD-4 deviates from locked plan.md P0.3; it is recorded
-  PENDING-RATIFICATION and must be ratified through the same cross-team channel plan.md reserves
-  (alongside the deferred caller-failure-policy and `x-routing-error`-format ratifications below).
+_All resolved 2026-06-28 — readiness re-run confirmed consistency across spine, PRD, and epics._
+
+- **✅ DONE — PRD revert (FR6 / G-E → plan.md P0.3, owner: PM).** AD-4 keeps `Send` **in** the kit.
+  Completed in **PRD v0.4** (change log 2026-06-28): FR6/G-E restored to "one branchless
+  `routingmeta::Send` lives in the kit (= `FillCommon` + `ProjectMeta`, returns `ProjResult`,
+  no-throw); the caller owns the abort/proceed decision." Read-only BRIEF criterion E untouched.
+- **✅ DONE — epics.md revert (owner: SM).** Story **1.4**, **AR3**, and the FR6 line in the
+  Requirements Inventory now read "`routingmeta::Send` lives in the kit." Confirmed by the
+  2026-06-28 implementation-readiness re-run (FR6/AD-4 reconciled across all three artifacts).
 
 ## Deferred
 
@@ -223,4 +223,3 @@ example/
 - **`v1 → v2` wire evolution** — P2, out of scope; `x-contract-version` reserves the lever.
 - **Packaging / install** — deferred (plan.md); build-hardening proceeds regardless.
 - **HMAC / signatures** — out of scope; the digest is integrity, not security (a body editor recomputes it).
-- **`Send` reference placement (demo vs README)** — the Sender's call; not the lib's contract.

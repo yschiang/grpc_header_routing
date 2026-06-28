@@ -1,0 +1,17 @@
+# Production-readiness static-analysis gate (D2). Conservative, high-signal set —
+# report-only here; the gate runs with --warnings-as-errors='*' to enforce.
+# Generated code (build/generated) and system headers are excluded via HeaderFilterRegex.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-init-variables,
+  misc-unused-using-decls,
+  misc-unused-parameters,
+  readability-redundant-declaration,
+  -bugprone-easily-swappable-parameters
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*/src/.*'
+FormatStyle: file

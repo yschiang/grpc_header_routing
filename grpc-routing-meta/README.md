@@ -6,8 +6,10 @@ drift from it (the body is the single source of truth). A `protoc` plugin genera
 the projection; one **unified sender** serves every system.
 
 - **中文總覽:** [`OVERVIEW.zh.md`](OVERVIEW.zh.md) — 目的、用法、metadata 範例、error control。
+- **Wire contract:** [`SPEC.md`](SPEC.md) — the normative byte-level header spec.
 - **Design contract:** [`CONTEXT.md`](CONTEXT.md) — one page of glossary + testable
   invariants (read this before writing tests or reviewing code).
+- **End-to-end walkthrough:** [`DEMO.md`](DEMO.md) — copy-paste session, clean build to every behavior.
 - **Runnable kit:** [`example/`](example/).
 
 ## Three systems, one sender
@@ -77,13 +79,18 @@ on Protobuf 3.20.3 and 3.21.12.
 
 ```
 README.md          this overview
+SPEC.md            normative wire contract (byte-level header spec)
 CONTEXT.md         design summary + testable invariants
+OVERVIEW.zh.md     中文設計總覽
+DEMO.md            end-to-end runnable walkthrough
 example/
   proto/           metadata_options, process_context, sys1, sys2, sys3
   src/plugin/      protoc-gen-meta.cc        (codegen)
-  src/common/      url_encode, sha256, metadata_sink, process_context_emit, process_context_parser
+  src/common/      url_encode, sha256, metadata_sink, process_context_emit,
+                   process_context_parser, proj_result, common_headers
   sender/          unified_sender.cc         (one Send<>() for all systems)
   receiver/        receiver_verify.cc
-  tests/           test_projection.cc
+  tests/           test_projection.cc, bench_projection.cc, negative/ (codegen-reject fixtures)
+  grpc_demo/       real-wire gRPC round-trip (optional; see DEMO.md §5)
   build.sh  CMakeLists.txt
 ```

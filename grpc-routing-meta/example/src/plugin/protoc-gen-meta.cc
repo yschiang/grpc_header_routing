@@ -36,7 +36,7 @@ std::string ns_of(const FileDescriptor* f) {
   return o;
 }
 
-struct Proj { std::string key; bool required; std::string getter; };
+struct Proj { std::string key{}; bool required = false; std::string getter{}; };
 
 // Recurse non-repeated message fields collecting (routing.project) scalars and the
 // getter path to each (e.g. "job().mask().mask_id()"). `onpath` is the set of

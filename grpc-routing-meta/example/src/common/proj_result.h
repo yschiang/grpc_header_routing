@@ -9,7 +9,7 @@
 namespace routingmeta {
 
 struct Issue {
-  enum Kind { MissingRequired, Overflow } kind;
+  enum Kind { MissingRequired, Overflow } kind = MissingRequired;
   std::string key;   // header key for MissingRequired (e.g. "x-mask-id"); empty for Overflow
 };
 

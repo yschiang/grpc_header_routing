@@ -2,7 +2,7 @@
 
 The one-page contract behind the `example/` kit. Written to be used for **writing
 tests and doing code review** — every numbered invariant below is something to
-assert or check. Full background (spec, domain model) is in `archive/`.
+assert or check. Full background is in the normative [`SPEC.md`](SPEC.md) and the design overview [`OVERVIEW.zh.md`](OVERVIEW.zh.md).
 
 > **Normative wire rules live in [`SPEC.md`](SPEC.md)** (the byte-level header contract).
 > This document is project context + the testable invariants; where it and SPEC.md

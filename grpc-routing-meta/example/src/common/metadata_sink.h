@@ -12,15 +12,20 @@
 
 namespace routingmeta {
 
+// gRPC/HPACK per-entry overhead (RFC 7541 §4.1) — the ONE definition. This is the
+// leaf header, so the policy header (process_context_emit.h, which #includes this)
+// references it from here; defining it there instead would need a circular include.
+constexpr std::size_t kHpackEntryOverhead = 32;
+
 class MetadataSink {
  public:
   virtual ~MetadataSink() = default;
 
   // Non-virtual: every Add updates the running byte total, then delegates to Write.
-  // gRPC bounds metadata by sum(name.size + value.size + 32) — RFC 7541 §4.1. Using
-  // the same formula here means our budget check matches what gRPC actually enforces.
+  // gRPC bounds metadata by sum(name.size + value.size + overhead) — RFC 7541 §4.1.
+  // Using the same formula here means our budget check matches what gRPC enforces.
   void Add(const std::string& key, const std::string& value) {
-    bytes_ += key.size() + value.size() + 32;  // +32 == kHpackEntryOverhead in process_context_emit.h
+    bytes_ += key.size() + value.size() + kHpackEntryOverhead;
     Write(key, value);
   }
   std::size_t bytes() const { return bytes_; }

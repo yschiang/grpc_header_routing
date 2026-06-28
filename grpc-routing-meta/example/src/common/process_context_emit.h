@@ -29,9 +29,8 @@ namespace routingmeta {
 constexpr size_t kMaxTotalMetaBytes = 7168;   // 7 KB — total of all headers WE emit
 constexpr size_t kMaxContexts       = 25;     // also cap raw count (spec Appendix C)
 constexpr size_t kMaxLineBytes      = 512;    // cap on the encoded VALUE of one context
-                                              // (its HPACK entry is this + name + 32)
-constexpr size_t kHpackEntryOverhead = 32;    // gRPC/HPACK per-entry, RFC 7541 §4.1;
-                                              // must match the +32 in metadata_sink.h Add()
+                                              // (its HPACK entry is this + name + kHpackEntryOverhead)
+// kHpackEntryOverhead is single-sourced in the leaf metadata_sink.h (#include'd above).
 
 // Emit the Layer 3 process-context headers for one request. `ctxs` are the already
 // URL-encoded, key-sorted "k=v&k=v" strings, in body order. Returns true iff overflow

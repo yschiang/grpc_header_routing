@@ -4,7 +4,7 @@ baseline_commit: 1063ca904f2fa85c2a98fda540454996cc741150
 
 # Story 1.5: Single-source the HPACK overhead constant
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -38,6 +38,12 @@ so that the byte-budget math cannot drift between files.
   - [x] `cd grpc-routing-meta/example && ./build.sh` → links; `./build/test_projection` → `ALL TESTS PASSED` (the overflow-by-bytes / line / count cases are unchanged → thresholds intact).
   - [x] `grep -rn "kHpackEntryOverhead" src/common` → exactly one definition (metadata_sink.h) + the two references (process_context_emit.h). `grep -rn "+ 32\|+32" src/common` → no functional `+ 32` literal remains (only the RFC explanatory comment at `metadata_sink.h:20`, if kept).
   - [x] `./build/unified_sender` metadata byte counts (e.g. `875 bytes` for sys1 2-context) are byte-identical to before — proves the accounting didn't drift. `./build/receiver_verify` → digest OK.
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). Clean — 0 patch, 0 decision-needed, 0 deferred, 1 dismissed. Blind Hunter: no defects (constexpr namespace-scope = internal linkage, no ODR risk; reference resolves via the include). Acceptance Auditor: PASS — all 3 ACs with build/grep/runtime evidence, scope intact. Edge Case Hunter: no genuine gaps (single definition, no leftover literal 32, three limits still single-sourced, byte math unchanged)._
+
+_Dismissed (1): the digest byte-estimate in `process_context_emit.h:49` hardcodes `24`/`71` (the digest header name length + `sha256:`+hex value length) rather than deriving them — pre-existing, NOT introduced by 1.5, and not the HPACK overhead this story single-sources. Those sizes are pinned by the frozen wire contract (CR1/AD-9: the digest header name and format cannot change without an `x-contract-version` bump), so there is no real drift risk._
 
 ## Dev Notes
 

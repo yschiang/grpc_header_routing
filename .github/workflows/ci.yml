@@ -1,0 +1,58 @@
+# CI matrix (AD-14). NOTE: the workspace forbids pushing to any remote, so this
+# workflow is validated by local-path equivalence (it mirrors the exact commands
+# run locally per cell), NOT by a remote green run.
+name: ci
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  matrix:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx: [g++, clang++]
+        protobuf: ['3.20.3', '3.21.12']
+    env:
+      PREFIX: ${{ github.workspace }}/pb-${{ matrix.protobuf }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: install toolchain deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang pkg-config cmake git libgrpc++-dev
+      - name: cache protobuf prefix
+        id: pbcache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PREFIX }}
+          key: protobuf-${{ matrix.protobuf }}-ubuntu-22.04
+      - name: build protobuf ${{ matrix.protobuf }} from source (pinned tag)
+        if: steps.pbcache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch v${{ matrix.protobuf }} https://github.com/protocolbuffers/protobuf
+          if [ -f protobuf/CMakeLists.txt ]; then S=protobuf; else S=protobuf/cmake; fi
+          cmake -S "$S" -B protobuf/build -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+            -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
+          cmake --build protobuf/build -j --target install
+      - name: build + negative-codegen gate + binaries
+        working-directory: grpc-routing-meta/example
+        env:
+          PROTOC: ${{ env.PREFIX }}/bin/protoc
+          PKG_CONFIG_PATH: ${{ env.PREFIX }}/lib/pkgconfig
+          LD_LIBRARY_PATH: ${{ env.PREFIX }}/lib
+        run: ./build.sh
+      - name: self-checks (the four binaries)
+        working-directory: grpc-routing-meta/example
+        env:
+          LD_LIBRARY_PATH: ${{ env.PREFIX }}/lib
+        run: |
+          ./build/unified_sender
+          ./build/receiver_verify
+          ./build/test_projection
+          ./build/bench_projection
+      - name: gRPC compile-smoke (HR4, compile only)
+        working-directory: grpc-routing-meta/example
+        env:
+          PKG_CONFIG_PATH: ${{ env.PREFIX }}/lib/pkgconfig
+        run: |
+          "$CXX" -std=c++17 -fsyntax-only -DROUTINGMETA_WITH_GRPC \
+            -I build/generated -I src -I "$(pkg-config --variable=includedir protobuf)" \
+            $(pkg-config --cflags grpc++) tests/grpc_smoke.cc

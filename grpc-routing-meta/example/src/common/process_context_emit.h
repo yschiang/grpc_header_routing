@@ -33,16 +33,21 @@ constexpr size_t kMaxLineBytes      = 512;    // cap on the encoded VALUE of one
 // kHpackEntryOverhead lives in metadata_sink.h (single source) — included above.
 
 // Emit the Layer 3 process-context headers for one request. `ctxs` are the already
-// URL-encoded, key-sorted "k=v&k=v" strings, in body order. Returns true iff
-// context lines + digest were suppressed due to overflow.
-inline bool EmitProcessContexts(MetadataSink& sink, const std::vector<std::string>& ctxs) {
+// URL-encoded, key-sorted "k=v&k=v" strings, in body order.
+// `emit_digest` (default true) chooses whether to emit the sha256 digest header — a
+// send-time integrity toggle; the context lines, count, format, and overflow decision are
+// unaffected by it. Returns true iff context lines were suppressed due to overflow.
+inline bool EmitProcessContexts(MetadataSink& sink, const std::vector<std::string>& ctxs,
+                                bool emit_digest = true) {
   sink.Add("x-process-context-count", std::to_string(ctxs.size()));
   sink.Add("x-process-context-format", "urlencoded-query-string-v1");
   if (ctxs.empty()) return false;                            // count=0: nothing to project
 
   static const std::string kKey = "x-process-context";
-  // Pre-charge the digest header we'll emit below: name "x-process-context-digest"(24)
-  // + value "sha256:"(7) + 64 hex = 71, + one HPACK entry.
+  // Pre-charge the digest header UNCONDITIONALLY (even when emit_digest=false): name
+  // "x-process-context-digest"(24) + value "sha256:"(7) + 64 hex = 71, + one HPACK entry.
+  // Charging it whether or not it's emitted keeps the overflow decision identical either
+  // way — the digest toggle must not move the byte budget.
   size_t projected = 24 + 71 + kHpackEntryOverhead;
   size_t maxline = 0;
   for (const auto& c : ctxs) {
@@ -58,12 +63,14 @@ inline bool EmitProcessContexts(MetadataSink& sink, const std::vector<std::strin
     return true;                                             // backend reads full detail from body
   }
 
-  std::string canon;
-  for (size_t i = 0; i < ctxs.size(); ++i) {
-    if (i) canon.push_back('\n');
-    canon += ctxs[i];
+  if (emit_digest) {
+    std::string canon;
+    for (size_t i = 0; i < ctxs.size(); ++i) {
+      if (i) canon.push_back('\n');
+      canon += ctxs[i];
+    }
+    sink.Add("x-process-context-digest", "sha256:" + Sha256Hex(canon));
   }
-  sink.Add("x-process-context-digest", "sha256:" + Sha256Hex(canon));
   for (const auto& c : ctxs) sink.Add(kKey, c);
   return false;
 }

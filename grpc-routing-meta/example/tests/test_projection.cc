@@ -208,13 +208,21 @@ int main() {
     assert(sink.Get("x-route-profile").empty());
   }
 
-  // --- EmitProcessContexts returns overflow signal (Task 1) ---
+  // --- EmitProcessContexts: overflow signal + send-time digest toggle ---
   {
     std::vector<std::string> few(2, "ChamberId=CH-A");
     routingmeta::VectorSink sink;
-    bool of = routingmeta::EmitProcessContexts(sink, few);
+    bool of = routingmeta::EmitProcessContexts(sink, few);         // default: digest ON
     assert(!of);                                                  // within budget
     assert(sink.Get("x-process-context-digest").rfind("sha256:", 0) == 0);
+
+    routingmeta::VectorSink sink_off;                             // send-time: digest OFF
+    bool of_off = routingmeta::EmitProcessContexts(sink_off, few, /*emit_digest=*/false);
+    assert(!of_off);
+    assert(sink_off.Get("x-process-context-digest").empty());     // no digest header
+    assert(sink_off.Count("x-process-context") == 2);             // context lines unaffected
+    assert(sink_off.Get("x-process-context-count") == "2");       // count unaffected
+    assert(sink_off.Get("x-process-context-format") == "urlencoded-query-string-v1");
 
     std::vector<std::string> many(30, "ChamberId=CH-A");
     routingmeta::VectorSink sink2;
@@ -222,6 +230,12 @@ int main() {
     assert(of2);                                                  // count > 25
     assert(sink2.Get("x-process-context-overflow") == "true");
     assert(sink2.Count("x-process-context") == 0);
+
+    routingmeta::VectorSink sink2_off;                            // overflow identical with digest OFF
+    bool of2_off = routingmeta::EmitProcessContexts(sink2_off, many, /*emit_digest=*/false);
+    assert(of2_off);                                              // pre-charge unconditional -> same decision
+    assert(sink2_off.Get("x-process-context-overflow") == "true");
+    assert(sink2_off.Count("x-process-context") == 0);
   }
 
   // --- One sender path: the kit populates (FillCommon + ProjectMeta -> ProjResult);

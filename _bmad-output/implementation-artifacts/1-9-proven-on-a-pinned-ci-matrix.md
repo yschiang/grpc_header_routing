@@ -4,7 +4,7 @@ baseline_commit: be15e8678a9fac2f2315ba9ae57ce52a5130410c
 
 # Story 1.9: Proven on a pinned CI matrix
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -59,6 +59,22 @@ so that it cannot silently bind to one compiler or protobuf version.
   - [x] **YAML validity:** confirm `.github/workflows/ci.yml` parses (e.g. `python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/ci.yml'))"`).
   - [x] **Document the equivalence mapping** (in the story's Dev Agent Record / Completion Notes): each CI step ↔ the exact local command it mirrors. State plainly the inherent limit: the OTHER cells (clang, protobuf 3.21.12) and the from-source protobuf build cannot be executed here (no remote run, Linux-only); they are encoded via the same env-override mechanism the dev-host cell proves. That limit IS the AC3 contract (local-path equivalence, not a remote green run).
   - [x] Do NOT push, do NOT add a remote, do NOT attempt to trigger the workflow.
+
+### Review Findings
+
+_Code review 2026-06-28 (Blind Hunter [diff-only] + Edge Case Hunter [diff+repo+ran build/smoke] + Acceptance Auditor [diff+spec+arch], no shared context). 4 patches (CI-build hardening), 1 deferred, 4 dismissed. **Acceptance Auditor: PASS 3/3 ACs** (locally re-ran build + 4 self-checks + smoke). **Edge Case Hunter: CONCERNS** — but PROVED the ADL smoke is non-vacuous via scratch mutations (misspelled / mis-qualified `ProjectMeta` → compile error; correct → exit 0). **Blind Hunter: CONCERNS** — caught the `BUILD_SHARED_LIBS` knob bug the other two assumed away. All 4 patches are to the CI YAML's from-source protobuf step; YAML re-parses; kit/wire untouched._
+
+- [x] [Review][Patch][Med] **Wrong shared-libs knob → static protobuf → likely CI link failure** [.github/workflows/ci.yml, protobuf-build step]. protobuf's CMake keys shared/static off its OWN `protobuf_BUILD_SHARED_LIBS` (default OFF), not the generic `BUILD_SHARED_LIBS` — so `-DBUILD_SHARED_LIBS=ON` was overridden and protobuf would install `libprotobuf.a`. The kit then static-links `-lprotobuf` without the `-lpthread`/`-lz` that pre-22 static protobuf needs → undefined refs at link in every cell (and the rpath/shared apparatus would test nothing). **Fixed:** `-Dprotobuf_BUILD_SHARED_LIBS=ON` — matches the kit's documented shared-lib link model (transitive deps via `NEEDED`).
+- [x] [Review][Patch][Med] **Install-layout fallback risk** — added `-DCMAKE_INSTALL_LIBDIR=lib` so the from-source `protobuf.pc` + `.so` land at `$PREFIX/lib/pkgconfig` / `$PREFIX/lib`, exactly where `PKG_CONFIG_PATH`/`LD_LIBRARY_PATH` point. Without it, a multiarch/`lib64` libdir would leave `pkg-config` falling back to apt's protobuf 3.12 → the generated `*.pb.h` version-guard `#error`. (Blind Med #2.)
+- [x] [Review][Patch][Low] **Implicit zlib** — added `zlib1g-dev` to the apt install (protobuf cmake's `find_package(ZLIB)` was satisfied only transitively via `libgrpc++-dev`). (Edge Low.)
+- [x] [Review][Patch][Low] **Unbounded make jobs** — `-j` → `-j"$(nproc)"` to avoid OOM-killing the compiler on a 2-core runner. (Blind Low.)
+- [x] [Review][Defer] **gRPC↔protobuf header-version skew in the smoke** → first real Linux CI run (logged in `deferred-work.md`). The smoke pairs apt `libgrpc++-dev` (built against protobuf ~3.12) with the cell's from-source protobuf 3.20/3.21 headers — a cross-version combo the dev host can't reproduce (local grpc++ 1.46.1 + protobuf 3.20.3 are a matched pair, so the local compile proved the ADL path but not this mix). Very likely compiles (grpc-1.x protobuf API surface is stable 3.12→3.21; the cell's protobuf `-I` is prepended), but unpinned + unverifiable here. Fallback (pin grpc from source / representative cell) already documented. Inherent to no-remote-run, not a code defect.
+
+_Dismissed (4):_
+- _Edge Low "`LD_LIBRARY_PATH` redundant (rpath baked)" — intentional belt-and-suspenders; correct + harmless._
+- _Blind Low "cache key omits the compiler" — by design: the from-source protobuf prefix is independent of which compiler later builds the KIT against it (gcc/clang share libstdc++ ABI), so caching per protobuf-version (not per compiler) is correct and dedups the build._
+- _Blind Low "`on: [push,…]` triggers inert in a no-push workspace" — cosmetic; the top-of-file banner already concedes local-equivalence validation. Valid YAML, harmless._
+- _Edge Low "CMake lacks bench/grpc-smoke targets" — already the deferred CMake↔build.sh parity item (→ 1.15); CI drives from `build.sh` precisely because of it. Not re-opened._
 
 ## Dev Notes
 
@@ -207,3 +223,4 @@ claude-opus-4-8[1m] (Amelia / Senior Software Engineer) — research + engineeri
 
 - 2026-06-28 — Story 1.9 drafted (create-story; research delegated to a subagent, authored in the main loop): GitHub Actions matrix Linux × {gcc,clang} × {protobuf 3.20.3, 3.21.12} from-source-cached, each cell running `build.sh` (build + negative gate + 4 binaries) + self-checks + a `-fsyntax-only` gRPC `GrpcSink`/ADL compile-smoke (resolves the 1.3 deferral, HR4). CI driven by `build.sh` (CMake lacks the gate + bench). No push → AC3 proven by local-path equivalence (build.sh + self-checks + a real local gRPC smoke compile, since grpc++ is present on the dev host). New files only: `.github/workflows/ci.yml`, `tests/grpc_smoke.cc`.
 - 2026-06-28 — Story 1.9 implemented (dev-story): NEW `.github/workflows/ci.yml` (4-cell matrix, from-source protobuf cached on tag, `build.sh` driver + self-checks + gRPC `-fsyntax-only` smoke) and `tests/grpc_smoke.cc` (guarded unqualified `ProjectMeta(req, GrpcSink)` ADL instantiation — resolves the 1.3 deferral). Verified locally: build + 4 self-checks green, real smoke compile exit 0 (and trivial without the flag), YAML parses + matrix asserts 4 cells. No `build.sh`/code/CMake edits; wire byte-identical. Engineering by subagents, independently re-verified in the main loop. Status → review.
+- 2026-06-28 — Story 1.9 code review (3 adversarial subagents, no shared context): Auditor PASS 3/3, Edge CONCERNS (proved the ADL smoke non-vacuous by mutation), Blind CONCERNS (caught the static-libs knob bug). 4 CI-build hardening patches to `ci.yml` (`protobuf_BUILD_SHARED_LIBS=ON` not generic `BUILD_SHARED_LIBS`; `CMAKE_INSTALL_LIBDIR=lib`; `zlib1g-dev`; `-j$(nproc)`), 1 deferred (gRPC↔protobuf header skew → first Linux CI run), 4 dismissed. YAML re-parses; kit/wire untouched. Status → done.

@@ -57,7 +57,7 @@ development_status:
   1-6-projectmeta-self-times-and-reports-duration: done
   1-7-bench-projection-proves-sub-millisecond: done
   1-8-portable-build-no-machine-specific-paths: done
-  1-9-proven-on-a-pinned-ci-matrix: review
+  1-9-proven-on-a-pinned-ci-matrix: done
   1-10-build-time-negative-codegen-gate-proven-by-fixtures: backlog
   1-11-receiver-digest-gate-regression: backlog
   1-12-canonical-projection-crypto-vectors-regression-guarded: backlog

@@ -53,9 +53,9 @@ inline std::string UrlDecode(const std::string& in) {
 // Lenient: a pair without '=' is SKIPPED (not inserted); the first '=' splits
 // key/value so values may themselves contain '=' ("k=v=w" -> k->"v=w"). Keys
 // and values are UrlDecode'd, so malformed escapes pass through literally.
-// Because the backing store is std::map, a DUPLICATE KEY is LAST-WINS: each
-// pair assigns kv[key], so the final occurrence overwrites earlier ones
-// ("K=a&K=b&K=c" -> K->"c").
+// A DUPLICATE KEY is LAST-WINS because each pair assigns kv[key], so the final
+// occurrence overwrites earlier ones ("K=a&K=b&K=c" -> K->"c"). (std::map keeps
+// the surviving keys sorted — hence the "ordered" map noted above.)
 inline std::map<std::string, std::string> ParseContext(const std::string& ctx) {
   std::map<std::string, std::string> kv;
   size_t i = 0;

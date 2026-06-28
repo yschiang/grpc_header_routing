@@ -4,7 +4,7 @@ baseline_commit: 57309edb76795a5473e08c2521a1d080759b5633
 
 # Story 1.13: Parser robustness (lenient, no-crash)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -115,7 +115,7 @@ claude-opus-4-8[1m] (engineering subagent under Amelia/dev-story; main-loop inde
 
 ### Completion Notes List
 
-- **AC1 (malformed escape → literal, HR2)**: 11 `UrlDecode` asserts pin literal pass-through — trailing `%` (`"R%"`,`"%"`), truncated (`"%2"`,`"a%2"`), non-hex (`"%2G"`,`"%G2"`,`"%ZZ"`), well-formed upper+lower (`"%2F"`/`"%2f"`→`/`), and mixed `"a%2Fb%ZZc%"`→`"a/b%ZZc%"`. Same leniency through `ParseContext` (`"R%2FA"`→`R/A`, `"R%ZZ"`→`R%ZZ`). Subagent traced `"a%2Fb%ZZc%"` against the real `UrlDecode` — output matches the derived literal exactly (no code/story divergence).
+- **AC1 (malformed escape → literal, HR2)**: 10 `UrlDecode` asserts + 2 `ParseContext` leniency asserts (12 AC1 asserts) pin literal pass-through — trailing `%` (`"R%"`,`"%"`), truncated (`"%2"`,`"a%2"`), non-hex (`"%2G"`,`"%G2"`,`"%ZZ"`), well-formed upper+lower (`"%2F"`/`"%2f"`→`/`), and mixed `"a%2Fb%ZZc%"`→`"a/b%ZZc%"`. Same leniency through `ParseContext` (`"R%2FA"`→`R/A`, `"R%ZZ"`→`R%ZZ`). Subagent traced `"a%2Fb%ZZc%"` against the real `UrlDecode` — output matches the derived literal exactly (no code/story divergence).
 - **AC2 (last-wins + documented)**: `ParseContext("RecipeID=A&RecipeID=B")["RecipeID"]=="B"`, 3-way `K=a&K=b&K=c`→`c`, unrelated key unaffected. Documented both rules in `process_context_parser.h` as comment-only block comments (verified: `git diff` shows zero non-comment added lines) — lenient `%`-pass-through above `UrlDecode`, `=`-less-skip + duplicate-key-last-wins above `ParseContext`.
 - **AC3 (no-crash garbled corpus)**: drove `""`,`"%"`,`"%%%"`,`"&&&"`,`"&=&=&"`,`"="`,`"=v"`,`"k="`,`"k"`,`"k=v=w"`, high-byte `"k=\xC3\xA9"`, and a 5000-char value through `ParseContext`; plus `VerifyDigest({}, "")` and `VerifyDigest({"garb=%","x"}, sha256:0…)` — each returns a sane `map`/`VerifyResult`, no crash (binary reaches `ALL TESTS PASSED`). Non-vacuous: exact map sizes/contents pinned (`"&=&=&"`→size 1 `""→""`; `"k=v=w"`→`"v=w"`).
 - **No drift**: parser already lenient; only `tests/test_projection.cc` + `process_context_parser.h` comments changed. Receiver-side only → zero wire/projection bytes changed; digest `efafba16…` identical; `[neg ]` gate untouched.
@@ -128,4 +128,18 @@ claude-opus-4-8[1m] (engineering subagent under Amelia/dev-story; main-loop inde
 ## Change Log
 
 - 2026-06-28 — Story 1.13 drafted (create-story): lock receiver parser robustness (HR2) by negative tests + document the two rules. Adds malformed `%`-escape literal-pass-through asserts (trailing/truncated/non-hex), duplicate-key last-wins, and a no-crash garbled corpus through `ParseContext`/`VerifyDigest`; documents lenient-parse + last-wins in `process_context_parser.h`. Parser already lenient — test + doc only, no wire/projection change (receiver-side; CR1/AD-9 preserved).
-- 2026-06-28 — Story 1.13 implemented (dev-story): all 4 tasks done. `tests/test_projection.cc` (11 malformed-escape + last-wins + garbled-corpus asserts, all non-vacuous) + `process_context_parser.h` (comment-only docs for both rules — verified zero non-comment added lines). Subagent traced `UrlDecode("a%2Fb%ZZc%")`→`"a/b%ZZc%"` against the real code (matches). Build links, `ALL TESTS PASSED`, `receiver_verify` digest UNCHANGED (`efafba16…`), bench PASSED, `[neg ]` gate untouched. No drift — parser already lenient, receiver-side only, zero wire bytes changed. Status → review.
+- 2026-06-28 — Story 1.13 implemented (dev-story): all 4 tasks done. `tests/test_projection.cc` (malformed-escape + last-wins + garbled-corpus asserts, all non-vacuous) + `process_context_parser.h` (comment-only docs for both rules — verified zero non-comment added lines). Subagent traced `UrlDecode("a%2Fb%ZZc%")`→`"a/b%ZZc%"` against the real code (matches). Build links, `ALL TESTS PASSED`, `receiver_verify` digest UNCHANGED (`efafba16…`), bench PASSED, `[neg ]` gate untouched. No drift — parser already lenient, receiver-side only, zero wire bytes changed. Status → review.
+- 2026-06-28 — Story 1.13 code review (3 adversarial reviewers, no shared context): Acceptance Auditor + Edge Case Hunter PASS — all 3 ACs MET, wire frozen verified, build/test/digest re-run green; Edge Case Hunter additionally ran an ASan/UBSan robustness probe (embedded NUL, `%00`, `%3D` key, `%26` value, trailing `%` at many lengths, 100k key) — all sanitizer-clean. Two Low fixes applied: (1) Blind Hunter — `ParseContext` doc misattributed last-wins to `std::map`; reworded to credit the `kv[key]=` assignment (doc-accuracy matters in a doc story). (2) Acceptance Auditor — added one `VerifyDigest(..., "sha256:zz")` malformed-digest-string no-crash assert, and corrected a Completion-Notes count (10 `UrlDecode` + 2 `ParseContext`, not 11). Dismissed with cause: "SPEC §6 unverifiable" (confirmed §6 = "URL-encoding (frozen)" with the leniency sentence); re-entrancy/AD-12 correctly deferred to Story 1.14. Rebuilt: `ALL TESTS PASSED`, digest still `efafba16…`, parser.h still comment-only. Status → done.
+
+## Senior Developer Review (AI)
+
+**Date:** 2026-06-28 · **Outcome:** Approve (2 Low fixed, no High/Med). Three independent adversarial reviewers, no shared context.
+
+- **Acceptance Auditor (spec/arch):** AC1/AC2/AC3 MET; HR2/invariant-G deliverable ("receiver parser negative tests") discharged for the parse-leniency contract; AD-9/CR1 wire-frozen verified (`--stat` = comment-only header + additive test); bookkeeping accurate. Lows: VerifyDigest malformed-digest-string corner (fixed); Completion-Notes miscount (fixed); re-entrancy → 1.14 (correct deferral).
+- **Edge Case Hunter (repo + build + sanitizers):** Ran build + binaries; `ALL TESTS PASSED`, digest `efafba16…` unchanged. Hand-traced every assert against the parser; all exact. ASan/UBSan probe of uncovered inputs (NUL, `%00`, decode-to-`=`/`&` keys/values, trailing `%`, 100k key) — no crash, sanitizer-clean. `operator[]` empty-expected asserts are size-guarded (non-vacuous). No defects.
+- **Blind Hunter (diff-only):** Traced all literals (incl. `a%2Fb%ZZc%`→`a/b%ZZc%`) and corpus maps (incl. `&=&=&`→size 1) — all correct. Low: `ParseContext` doc misattributed last-wins to `std::map` rather than the `kv[key]=` assignment (**fixed**). "SPEC §6 unverifiable" dismissed (reference is correct).
+
+### Action Items
+- [x] [AI-Review][Low] Reword `ParseContext` last-wins doc to credit `kv[key]=` assignment, not `std::map` — done in `process_context_parser.h`.
+- [x] [AI-Review][Low] Add `VerifyDigest(…, "sha256:zz")` malformed-digest-string no-crash assert — done in `tests/test_projection.cc`.
+- [x] [AI-Review][Low] Correct Completion-Notes assert count (10 `UrlDecode` + 2 `ParseContext`) — done.

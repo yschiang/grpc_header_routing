@@ -431,6 +431,7 @@ int main() {
   assert(routingmeta::VerifyDigest({}, "").ok == false);
   assert(routingmeta::VerifyDigest({"garb=%", "x"},
                                    "sha256:" + std::string(64, '0')).ok == false);
+  assert(routingmeta::VerifyDigest({"garb=%"}, "sha256:zz").ok == false);  // malformed digest string -> data, no crash
 
   std::printf("ALL TESTS PASSED\n");
   return 0;

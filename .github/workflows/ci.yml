@@ -18,6 +18,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: install toolchain deps
         run: sudo apt-get update && sudo apt-get install -y build-essential clang pkg-config cmake git zlib1g-dev libgrpc++-dev gcovr
+      - name: formatting gate (clang-format 18.1.8, hand-written tree)
+        # Pinned via pip so CI and dev use the identical binary (skew = phantom
+        # diffs). format-check.sh hard-fails on any drift; sha256.h's dense crypto
+        # is exempted in-file with // clang-format off. Runs before the build so a
+        # formatting violation fails fast. One representative cell.
+        if: matrix.cxx == 'g++' && matrix.protobuf == '3.21.12'
+        working-directory: grpc-routing-meta/example
+        run: |
+          python3 -m pip install --quiet 'clang-format==18.1.8'
+          export CLANG_FORMAT="$(python3 -c 'import clang_format,glob,os;print(glob.glob(os.path.join(os.path.dirname(clang_format.__file__),"data/bin/clang-format*"))[0])')"
+          ./format-check.sh
       - name: cache protobuf prefix
         id: pbcache
         uses: actions/cache@v4

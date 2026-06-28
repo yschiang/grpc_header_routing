@@ -26,10 +26,10 @@ namespace routingmeta {
 // Budget for the metadata WE generate (common + scalar + process-context).
 // Transport/auth headers (:path, :authority, te, grpc-*, tokens) count against the
 // gRPC limit too and are NOT included here — keep this below the hard limit.
-constexpr size_t kMaxTotalMetaBytes = 7168;   // 7 KB — total of all headers WE emit
-constexpr size_t kMaxContexts       = 25;     // also cap raw count (spec Appendix C)
-constexpr size_t kMaxLineBytes      = 512;    // cap on the encoded VALUE of one context
-                                              // (its HPACK entry is this + name + kHpackEntryOverhead)
+constexpr size_t kMaxTotalMetaBytes = 7168;  // 7 KB — total of all headers WE emit
+constexpr size_t kMaxContexts = 25;          // also cap raw count (spec Appendix C)
+constexpr size_t kMaxLineBytes = 512;        // cap on the encoded VALUE of one context
+                                       // (its HPACK entry is this + name + kHpackEntryOverhead)
 // kHpackEntryOverhead is single-sourced in the leaf metadata_sink.h (#include'd above).
 
 // Emit the Layer 3 process-context headers for one request. `ctxs` are the already
@@ -41,7 +41,7 @@ inline bool EmitProcessContexts(MetadataSink& sink, const std::vector<std::strin
   // suppressed, so the backend knows how many to expect.
   sink.Add("x-process-context-count", std::to_string(ctxs.size()));
   sink.Add("x-process-context-format", "urlencoded-query-string-v1");
-  if (ctxs.empty()) return false;                             // count=0: nothing to project
+  if (ctxs.empty()) return false;  // count=0: nothing to project
 
   static const std::string kKey = "x-process-context";
   // What projecting all contexts (+ the digest header) would add to the metadata.
@@ -53,12 +53,11 @@ inline bool EmitProcessContexts(MetadataSink& sink, const std::vector<std::strin
     maxline = std::max(maxline, c.size());
   }
 
-  const bool overflow = ctxs.size() > kMaxContexts
-                     || maxline > kMaxLineBytes
-                     || sink.bytes() + projected > kMaxTotalMetaBytes;
+  const bool overflow = ctxs.size() > kMaxContexts || maxline > kMaxLineBytes ||
+                        sink.bytes() + projected > kMaxTotalMetaBytes;
   if (overflow) {
-    sink.Add("x-process-context-overflow", "true");           // explicit, never silent
-    return true;                                               // backend reads full detail from body
+    sink.Add("x-process-context-overflow", "true");  // explicit, never silent
+    return true;                                     // backend reads full detail from body
   }
 
   // Within budget: digest over the canonical (sorted, '\n'-joined) projection, then
@@ -70,7 +69,7 @@ inline bool EmitProcessContexts(MetadataSink& sink, const std::vector<std::strin
   }
   sink.Add("x-process-context-digest", "sha256:" + Sha256Hex(canon));
   for (const auto& c : ctxs) sink.Add(kKey, c);
-  return false;                                               // within budget: no overflow
+  return false;  // within budget: no overflow
 }
 
 }  // namespace routingmeta

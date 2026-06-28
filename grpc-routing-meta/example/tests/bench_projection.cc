@@ -53,16 +53,16 @@ int main() {
 
     auto t0 = std::chrono::steady_clock::now();
     for (int i = 0; i < kIters; ++i) {
-      routingmeta::VectorSink sink;            // fresh each call (sink accumulates)
-      auto r = ProjectMeta(req, sink);         // ADL on routingmeta:: sink arg
+      routingmeta::VectorSink sink;                 // fresh each call (sink accumulates)
+      auto r = ProjectMeta(req, sink);              // ADL on routingmeta:: sink arg
       guard += sink.items.size() + (r.ok ? 1 : 0);  // defeat -O2 elision
     }
     auto t1 = std::chrono::steady_clock::now();
 
     long long total = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
     long long per = total / kIters;
-    std::printf("projection: N=%2d contexts -> %8.3f us/call (%lld ns, %d iters)\n",
-                n, per / 1000.0, per, kIters);
+    std::printf("projection: N=%2d contexts -> %8.3f us/call (%lld ns, %d iters)\n", n,
+                per / 1000.0, per, kIters);
     if (per >= kBudgetNs) {
       std::fprintf(stderr, "FAIL: N=%d per-call %lld ns >= budget %lld ns\n", n, per, kBudgetNs);
       failed = true;

@@ -49,8 +49,8 @@ int main() {
   for (int t = 0; t < N; ++t) {
     threads.emplace_back([&req, &baseline, &mismatch] {
       for (int i = 0; i < M; ++i) {
-        routingmeta::VectorSink s;            // thread-local sink
-        ProjectMeta(req, s);                  // concurrent read of the one const req
+        routingmeta::VectorSink s;  // thread-local sink
+        ProjectMeta(req, s);        // concurrent read of the one const req
         if (s.items != baseline) mismatch.store(true);
       }
     });
@@ -60,7 +60,8 @@ int main() {
   // Explicit exit-code gate (not assert — survives -DNDEBUG; this binary's exit
   // status IS the CI/self-check signal).
   if (mismatch.load()) {
-    std::fprintf(stderr, "CONCURRENCY MISMATCH: a thread's projection diverged from the baseline\n");
+    std::fprintf(stderr,
+                 "CONCURRENCY MISMATCH: a thread's projection diverged from the baseline\n");
     return 1;
   }
   std::printf("CONCURRENCY TEST PASSED\n");

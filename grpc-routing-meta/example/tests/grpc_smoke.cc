@@ -7,17 +7,19 @@
 // NOT linked: the if(false) block never runs, so no live channel/server (HR4).
 // Flag OFF -> the body vanishes and main() is a trivial harmless TU.
 // =============================================================================
-#include "common/metadata_sink.h"   // routingmeta::GrpcSink under #ifdef ROUTINGMETA_WITH_GRPC (pulls <grpcpp/grpcpp.h>)
-#include "sys1.proj.h"              // routingmeta::ProjectMeta(const sys1::v1::CalculateRequest&, MetadataSink&)
+#include "common/metadata_sink.h"  // routingmeta::GrpcSink under #ifdef ROUTINGMETA_WITH_GRPC (pulls <grpcpp/grpcpp.h>)
+#include "sys1.proj.h"  // routingmeta::ProjectMeta(const sys1::v1::CalculateRequest&, MetadataSink&)
 
 int main() {
 #ifdef ROUTINGMETA_WITH_GRPC
-  if (false) {                       // compile-only: never executes; no live channel/server (HR4)
+  if (false) {  // compile-only: never executes; no live channel/server (HR4)
     grpc::ClientContext ctx;
     routingmeta::GrpcSink sink(&ctx);
     sys1::v1::CalculateRequest req;
-    ProjectMeta(req, sink);          // UNQUALIFIED -> ADL must resolve routingmeta::ProjectMeta via the GrpcSink arg
+    ProjectMeta(
+        req,
+        sink);  // UNQUALIFIED -> ADL must resolve routingmeta::ProjectMeta via the GrpcSink arg
   }
 #endif
-  return 0;                          // flag OFF -> trivial harmless TU
+  return 0;  // flag OFF -> trivial harmless TU
 }

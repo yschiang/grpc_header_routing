@@ -21,10 +21,8 @@ inline std::string UrlEncode(const std::string& in) {
   std::string out;
   out.reserve(in.size() * 3);
   for (unsigned char c : in) {
-    const bool unreserved =
-        (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-        (c >= '0' && c <= '9') ||
-        c == '-' || c == '_' || c == '.' || c == '~';
+    const bool unreserved = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                            (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~';
     if (unreserved) {
       out.push_back(static_cast<char>(c));
     } else {

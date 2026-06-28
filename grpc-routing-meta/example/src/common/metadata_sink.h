@@ -45,11 +45,15 @@ class MetadataSink {
 class VectorSink : public MetadataSink {
  public:
   std::string Get(const std::string& key) const {
-    for (const auto& kv : items) if (kv.first == key) return kv.second;
+    for (const auto& kv : items)
+      if (kv.first == key) return kv.second;
     return {};
   }
   int Count(const std::string& key) const {
-    int n = 0; for (const auto& kv : items) if (kv.first == key) ++n; return n;
+    int n = 0;
+    for (const auto& kv : items)
+      if (kv.first == key) ++n;
+    return n;
   }
   std::vector<std::pair<std::string, std::string>> items;
 
@@ -68,10 +72,12 @@ namespace routingmeta {
 class GrpcSink : public MetadataSink {
  public:
   explicit GrpcSink(grpc::ClientContext* ctx) : ctx_(ctx) {}
+
  protected:
   void Write(const std::string& key, const std::string& value) override {
     ctx_->AddMetadata(key, value);
   }
+
  private:
   grpc::ClientContext* ctx_;
 };

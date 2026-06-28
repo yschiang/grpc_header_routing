@@ -12,16 +12,16 @@
 // makes this resolution work; AD-4/AR3 the dependency direction it preserves).
 // =============================================================================
 #pragma once
-#include "common/common_headers.h"   // routingmeta::Runtime + FillCommon
-#include "common/metadata_sink.h"     // routingmeta::MetadataSink
-#include "common/proj_result.h"       // routingmeta::ProjResult
+#include "common/common_headers.h"  // routingmeta::Runtime + FillCommon
+#include "common/metadata_sink.h"   // routingmeta::MetadataSink
+#include "common/proj_result.h"     // routingmeta::ProjResult
 
 namespace routingmeta {
 
 template <class Req>
 ProjResult Send(const Req& req, const Runtime& rt, MetadataSink& sink) {
   FillCommon(rt, sink);
-  return ProjectMeta(req, sink);   // ADL on `sink` resolves the generated ProjectMeta
+  return ProjectMeta(req, sink);  // ADL on `sink` resolves the generated ProjectMeta
 }
 
 }  // namespace routingmeta

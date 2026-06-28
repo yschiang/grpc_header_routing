@@ -14,14 +14,15 @@ namespace routingmeta {
 
 struct Issue {
   enum Kind { MissingRequired, Overflow };
-  Kind kind{};       // value-init: a default-constructed Issue is deterministic, never UB
-  std::string key;   // MissingRequired: the projected header key (e.g. "x-mask-id")
+  Kind kind{};      // value-init: a default-constructed Issue is deterministic, never UB
+  std::string key;  // MissingRequired: the projected header key (e.g. "x-mask-id")
 };
 
 struct ProjResult {
-  bool ok = true;                       // false only on a blocking issue (missing required)
+  bool ok = true;  // false only on a blocking issue (missing required)
   std::vector<Issue> issues;
-  std::chrono::nanoseconds duration{};  // populated by ProjectMeta's self-timing; read by the caller (no kit logging — NFR7)
+  std::chrono::nanoseconds duration{};  // populated by ProjectMeta's self-timing; read by the
+                                        // caller (no kit logging — NFR7)
 };
 
 }  // namespace routingmeta

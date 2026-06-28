@@ -1,7 +1,11 @@
 #pragma once
-#include <string>
 #include <cstdint>
 #include <cstring>
+#include <string>
+// clang-format off
+// Dense reference SHA-256: the packed K[64] round-constant table and the
+// compression rounds are kept compact on purpose; clang-format would explode
+// both. Formatting is intentionally suspended for this primitive.
 namespace routingmeta {
 inline std::string Sha256Hex(const std::string& msg){
   auto rotr=[](uint32_t x,int n){return (x>>n)|(x<<(32-n));};
@@ -31,3 +35,4 @@ inline std::string Sha256Hex(const std::string& msg){
   return out;
 }
 }
+// clang-format on

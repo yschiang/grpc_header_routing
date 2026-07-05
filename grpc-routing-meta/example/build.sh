@@ -69,6 +69,9 @@ for f in tests/negative/*.proto; do
     bad_message_project.proto)        want='message field cannot project' ;;
     bad_project_under_repeated.proto) want='is set under repeated field' ;;
     bad_repeated_scalar.proto)        want='repeated field cannot project' ;;
+    bad_project_wrong_type.proto)     want='must be a string scalar' ;;
+    bad_pctx_wrong_type.proto)        want='(routing.pctx) on field' ;;
+    bad_multiple_ctx_fields.proto)    want='more than one repeated process-context' ;;
     *)                                want='' ;;
   esac
   err="$("$PROTOC" "${IPROTO[@]}" -I tests/negative \

@@ -133,12 +133,51 @@ bool ProjectOnlyOnScalarLeaf(const Descriptor* d, std::set<const Descriptor*>* o
              std::string(f->is_repeated() ? "repeated" : "message") +
              " field cannot project to a single-valued header";
       ok = false;
+    } else if (f->options().HasExtension(routing::project) &&
+               f->cpp_type() != FieldDescriptor::CPPTYPE_STRING) {
+      // Generated code calls .empty() and UrlEncode() on the field, which only
+      // compile for std::string — a numeric/bool/enum tag would emit code that
+      // fails to build instead of failing loud here.
+      *err = "(routing.project) on field \"" + f->name() + "\" in message " + d->name() +
+             " must be a string scalar";
+      ok = false;
     } else if (is_msg && !f->is_repeated()) {
       ok = ProjectOnlyOnScalarLeaf(f->message_type(), onpath, err);
     }
   }
   onpath->erase(d);
   return ok;
+}
+
+// Reject a second repeated process-context-bearing field (FindCtx returns only the
+// first match, so a second would silently vanish from the projection — count would
+// under-report the body, violating "never silent") and reject (routing.pctx) on a
+// non-string field (the generated context loop calls UrlEncode() on it, which only
+// compiles for std::string).
+bool ValidateContexts(const Descriptor* d, std::string* err) {
+  int ctx_fields = 0;
+  for (int i = 0; i < d->field_count(); ++i) {
+    const FieldDescriptor* f = d->field(i);
+    if (!f->is_repeated() || f->cpp_type() != FieldDescriptor::CPPTYPE_MESSAGE) continue;
+    bool is_ctx = false;
+    for (int k = 0; k < f->message_type()->field_count(); ++k) {
+      const FieldDescriptor* sf = f->message_type()->field(k);
+      if (!sf->options().HasExtension(routing::pctx)) continue;
+      is_ctx = true;
+      if (sf->cpp_type() != FieldDescriptor::CPPTYPE_STRING) {
+        *err = "(routing.pctx) on field \"" + sf->name() + "\" in message " +
+               f->message_type()->name() + " must be a string scalar";
+        return false;
+      }
+    }
+    if (is_ctx && ++ctx_fields > 1) {
+      *err = "message " + d->name() + " has more than one repeated process-context "
+             "field (\"" + f->name() + "\" is the second) — only the first is "
+             "projected; the rest would silently vanish";
+      return false;
+    }
+  }
+  return true;
 }
 
 // Per-message validation, run before any output is written so codegen fails LOUDLY
@@ -154,8 +193,9 @@ bool Validate(const Descriptor* d, std::string* err) {
              d->name() + " — a single-valued header would be emitted twice";
       return false;
     }
-  std::set<const Descriptor*> onpath;
-  return NoProjectUnderRepeated(d, &onpath, err);
+  { std::set<const Descriptor*> onpath;
+    if (!NoProjectUnderRepeated(d, &onpath, err)) return false; }
+  return ValidateContexts(d, err);
 }
 
 class ProjGen : public CodeGenerator {

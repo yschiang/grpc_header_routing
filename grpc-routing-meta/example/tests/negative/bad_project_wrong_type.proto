@@ -1,0 +1,11 @@
+// NEGATIVE fixture — codegen MUST reject this (see build.sh "[neg ]").
+// (routing.project) on a non-string scalar: the generated code calls .empty()
+// and UrlEncode() on the field, both of which only compile for std::string.
+// Validate must fail loud instead of emitting code that fails to compile.
+syntax = "proto3";
+package neg.v1;
+import "metadata_options.proto";
+
+message BadProjectWrongType {
+  int32 lot_count = 1 [(routing.project) = {key: "x-lot-count", required: true}];
+}

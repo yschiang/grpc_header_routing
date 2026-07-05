@@ -1,0 +1,12 @@
+// NEGATIVE fixture — codegen MUST reject this (see build.sh "[neg ]").
+// Two repeated process-context-bearing fields on the same message: FindCtx
+// returns only the first, so the second would silently vanish from the
+// projection and x-process-context-count would under-report the body.
+syntax = "proto3";
+package neg.v1;
+import "process_context.proto";
+
+message BadMultipleCtxFields {
+  repeated common.v1.ProcessContext contexts_a = 1;
+  repeated common.v1.ProcessContext contexts_b = 2;
+}

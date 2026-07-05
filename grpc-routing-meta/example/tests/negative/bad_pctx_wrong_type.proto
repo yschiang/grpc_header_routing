@@ -1,0 +1,15 @@
+// NEGATIVE fixture — codegen MUST reject this (see build.sh "[neg ]").
+// (routing.pctx) on a non-string field: the generated context loop calls
+// UrlEncode() on the field, which only compiles for std::string.
+// Validate must fail loud instead of emitting code that fails to compile.
+syntax = "proto3";
+package neg.v1;
+import "metadata_options.proto";
+
+message BadPctxCtx {
+  int32 lot_count = 1 [(routing.pctx) = {key: "LotCount"}];
+}
+
+message BadPctxWrongType {
+  repeated BadPctxCtx contexts = 1;
+}

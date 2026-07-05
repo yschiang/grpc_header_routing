@@ -69,7 +69,7 @@ static void fillCtx(common::v1::ProcessContext* c, const char* lot, const char* 
 }
 
 int main() {
-  const Runtime rt{"CORR-LOT01-001", "F18", "ETCH01"};   // [+meta] values you already have
+  const Runtime rt{"CORR-LOT01-001", "F18", "ETCH01", "REQ-0001", "eap"};   // [+meta] values you already have
 
   // --- sys1  sys1.control.calculate — batch of 2, full context ---
   {
@@ -87,7 +87,7 @@ int main() {
     sys2::v1::VerifyRequest req;                          // [app]
     req.add_contexts()->set_recipe_id("RCP_ETCH_V3");    // [app] business data
     routingmeta::VectorSink sink;                        // [+meta]
-    routingmeta::ProjResult r = Send(req, Runtime{"CORR-LOT01-002", "F18", "ETCH01"}, sink);  // [+meta]
+    routingmeta::ProjResult r = Send(req, Runtime{"CORR-LOT01-002", "F18", "ETCH01", "REQ-0002", "eap"}, sink);  // [+meta]
     dump("sys2  Verify (1 sparse context)", sink, r);        // [demo]
   }
 
@@ -95,7 +95,7 @@ int main() {
   {
     sys2::v1::ListRequest req;                            // [app] (no contexts to send)
     routingmeta::VectorSink sink;                        // [+meta]
-    routingmeta::ProjResult r = Send(req, Runtime{"CORR-LIST-003", "F18", "ETCH01"}, sink);   // [+meta]
+    routingmeta::ProjResult r = Send(req, Runtime{"CORR-LIST-003", "F18", "ETCH01", "REQ-0003", "eap"}, sink);   // [+meta]
     dump("sys2  List (count=0)", sink, r);                   // [demo]
   }
 
@@ -105,7 +105,7 @@ int main() {
     req.mutable_job()->mutable_mask()->set_mask_id("RET-9981");  // [app] business data (your mask id);
                                                             //       the x-mask-id HEADER is auto-projected by Send
     routingmeta::VectorSink sink;                          // [+meta]
-    routingmeta::ProjResult r = Send(req, Runtime{"CORR-sys3-004", "F18", "LITHO01"}, sink);  // [+meta]
+    routingmeta::ProjResult r = Send(req, Runtime{"CORR-sys3-004", "F18", "LITHO01", "REQ-0004", "eap"}, sink);  // [+meta]
     dump("sys3 Submit05 (nested mask id, no context)", sink, r);     // [demo]
   }
 
@@ -114,7 +114,7 @@ int main() {
     sys3::v1::Submit05Request req;                          // [app] mask deliberately NOT set
     routingmeta::VectorSink sink;                          // [+meta]
     routingmeta::ProjResult r =
-        Send(req, Runtime{"CORR-sys3-005", "F18", "LITHO01"}, sink);  // [+meta]
+        Send(req, Runtime{"CORR-sys3-005", "F18", "LITHO01", "REQ-0005", "eap"}, sink);  // [+meta]
     dump("sys3 Submit05 (EMPTY mask -> x-routing-error)", sink, r);   // [demo] ok=false, issue, duration
   }
 

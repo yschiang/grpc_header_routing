@@ -213,16 +213,28 @@ int main() {
   // --- common headers: 6 present, uniform, routing-selectors absent (inv. 2, 10) ---
   {
     routingmeta::VectorSink sink;
-    FillCommon(Runtime{"CORR-X", "F18", "ETCH01"}, sink);
+    FillCommon(Runtime{"CORR-X", "F18", "ETCH01", "REQ-X", "sys-x"}, sink);
     assert(sink.items.size() == 6);
     assert(sink.Get("x-contract-version") == "v1");
     assert(sink.Get("x-site-id") == "F18");
     assert(sink.Get("x-tool-id") == "ETCH01");
-    assert(!sink.Get("x-request-id").empty());
-    assert(!sink.Get("x-correlation-id").empty());
-    assert(!sink.Get("x-source-system").empty());
+    assert(sink.Get("x-request-id") == "REQ-X");
+    assert(sink.Get("x-correlation-id") == "CORR-X");
+    assert(sink.Get("x-source-system") == "sys-x");
     assert(sink.Get("x-target-system").empty());                   // selectors NOT emitted
     assert(sink.Get("x-route-profile").empty());
+  }
+
+  // --- FillCommon: request-id / source-system come from Runtime, not a hardcoded
+  //     demo constant — two distinct Runtimes MUST produce two distinct headers ---
+  {
+    routingmeta::VectorSink s1, s2;
+    FillCommon(Runtime{"CORR-A", "F18", "ETCH01", "REQ-AAA", "eap"}, s1);
+    FillCommon(Runtime{"CORR-B", "F18", "ETCH01", "REQ-BBB", "sys-b"}, s2);
+    assert(s1.Get("x-request-id") == "REQ-AAA");
+    assert(s2.Get("x-request-id") == "REQ-BBB");
+    assert(s1.Get("x-source-system") == "eap");
+    assert(s2.Get("x-source-system") == "sys-b");
   }
 
   // --- EmitProcessContexts: overflow signal + send-time digest toggle ---
@@ -260,7 +272,7 @@ int main() {
   {
     auto req = sys1Req(2);
     routingmeta::VectorSink sink;
-    FillCommon(Runtime{"CORR-S", "F18", "ETCH01"}, sink);              // common headers (lib)
+    FillCommon(Runtime{"CORR-S", "F18", "ETCH01", "REQ-S", "eap"}, sink);  // common headers (lib)
     routingmeta::ProjResult r = routingmeta::ProjectMeta(req, sink);   // body projection (lib)
     assert(r.ok);
     assert(sink.Get("x-contract-version") == "v1");                // common headers present

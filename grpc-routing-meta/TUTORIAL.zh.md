@@ -2,7 +2,7 @@
 
 目標讀者：RMS owner（receiver）與 sender owner。照本文從零走到「真實 proto build 過、
 headers 上線、receiver 驗過」。demo 版對照：`example/proto/sys2.proto` +
-`example/sender/unified_sender.cc` 的三個 sys2 pattern + `example/tests/test_projection.cc`。
+`example/sender/unified_sender.cc` 的四個 sys2 pattern + `example/tests/test_projection.cc`。
 
 ---
 
@@ -23,7 +23,8 @@ headers 上線、receiver 驗過」。demo 版對照：`example/proto/sys2.proto
 
 - C++17 編譯器（clang++ 或 g++）。
 - protoc + libprotobuf + libprotoc，**同一版本**（3.20 / 3.21 皆測過；CI matrix 就是這兩版）。
-- 除 protobuf 外零依賴。真線 demo（`grpc_demo/run.sh`）才需要 grpc++ + grpc_cpp_plugin。
+- 除 protobuf 外零依賴：投影、測試、§2.1 的案例全部不用 gRPC。需要 grpc++ 的只有兩處——
+  真線 demo（`grpc_demo/run.sh`，另需 grpc_cpp_plugin）和上線 sender 的 `GrpcSink`（§4 有編譯條件）。
 
 ```bash
 # 驗環境
@@ -289,7 +290,7 @@ message rqst_NRMS_GetRecipeSet {
 ```
 
 過了就會有 `build/generated/nrms.proj.h` / `.cc`：每個有 tag 的 message 一個
-`routingmeta::ProjectMeta(const rqst_NRMS_GetRecipeSet&, MetadataSink&, bool emit_digest = true)`。
+`routingmeta::ProjectMeta(const nrms::v1::rqst_NRMS_GetRecipeSet&, MetadataSink&, bool emit_digest = true)`。
 
 tag 放錯 codegen 會**直接 fail 並說原因**（never silent）。常見訊息對照：
 
@@ -324,10 +325,17 @@ stub->GetRecipeSet(&ctx, req, &resp);
 #include "common/metadata_sink.h"    // GrpcSink
 #include "nrms.proj.h"               // 生成的 ProjectMeta（你在 §3 加的系統）
 
-Runtime rt{corr_id, site_id, tool_id, unique_req_id, "nrms"};  // 你本來就有的值
+// source_system 是「你這個呼叫端」的身分（如 eap），不是目的系統
+Runtime rt{corr_id, site_id, tool_id, unique_req_id, "eap"};
 routingmeta::GrpcSink sink(&ctx);                             // [+meta] 1
 routingmeta::ProjResult r = Send(req, rt, sink);              // [+meta] 2 (= FillCommon + ProjectMeta)
 ```
+
+**編譯需求**：`GrpcSink` 只在定義了 `ROUTINGMETA_WITH_GRPC` 時編進來
+（`metadata_sink.h` 的 `#ifdef`，需要 grpc++ headers）。CMake 路徑偵測到 gRPC 會
+自動定義；你自己的 sender 專案本來就 link grpc++，加 `-DROUTINGMETA_WITH_GRPC`
+即可。沒有 gRPC 的環境（如純 `build.sh`）用 `VectorSink` 一樣能跑投影和測試——
+§2.1 的案例就是這樣 dump 的。
 
 `Send` 的範本在 `example/sender/unified_sender.cc`（一個 template，全系統共用，
 orchestration 歸 sender 所有，見 `docs/adr/0001`）。`ProjResult` 的處理原則：

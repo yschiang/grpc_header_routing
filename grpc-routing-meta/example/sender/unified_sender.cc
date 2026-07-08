@@ -108,6 +108,14 @@ int main() {
     dump("sys2  Download (recipe id + 3 lots in one FOUP)", sink, r);  // [demo]
   }
 
+  // --- sys2 RMS pattern 1b  empty recipe -> x-routing-error (no throw, no header) ---
+  {
+    sys2::v1::VerifyRequest req;                          // [app] recipe deliberately NOT set
+    routingmeta::VectorSink sink;                        // [+meta]
+    routingmeta::ProjResult r = Send(req, Runtime{"CORR-LOT01-002b", "F18", "ETCH01", "REQ-0002b", "eap"}, sink);  // [+meta]
+    dump("sys2  Verify (EMPTY recipe -> x-routing-error)", sink, r);  // [demo] ok=false, issue
+  }
+
   // --- sys2 RMS pattern 3  real fab proto shape — camelCase + own LotInfo ---
   // Same two ids as pattern 2, but in an unmodified real-world message layout:
   // pctx rides the system's OWN repeated lot message (only tagged keys are emitted),

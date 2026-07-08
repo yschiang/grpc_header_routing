@@ -78,56 +78,60 @@ cd example && ./build.sh        # 全綠 gate：codegen 驗證 + 測試 + receiv
 
 ### 2.1 實跑案例 — sender in → wire → receiver out
 
-剛才 `./build.sh` 已經把測試全跑過了。現在自己跑兩個 binary，輸出就是下面的案例：
-
-```bash
-./build/unified_sender    # 印每筆交易 attach 了哪些 headers → 案例 1、2、4 的 wire dump
-./build/receiver_verify   # receiver 端 digest 驗證：clean 收、tampered 拒 → 案例 5
-```
-
-案例 3 是 `test_projection` 的斷言（`./build.sh` 每次自動跑，剛剛就是全綠）。
-每案開頭都標了來源和 source 檔，想改數字自己玩就改那個檔重跑。以下輸出
-**不是示意，是實跑結果**；common 6 headers（x-request-id 等）每案都在，只列相關行。
+剛才 `./build.sh` 已經把測試全跑過了。案例 1–4 是 `./build/unified_sender` 印出的
+區塊（一個 `===` 標題一筆交易），案例 5 是 `./build/receiver_verify`。console 輸出
+**不是示意，是實跑結果**；sender in 的 code 都在 `sender/unified_sender.cc`，
+註解標了是哪個 pattern，想改數字自己玩就改那裡重跑。
 
 #### 案例 1 — tool id + 單一 recipe id（`sys2.recipe.verify`）
 
-> 來源：跑 `./build/unified_sender`，找 `=== sys2  Verify` 區塊；code 在
-> `sender/unified_sender.cc` 的「sys2 RMS pattern 1」。
-
 ```cpp
-// sender in
+// sender in（unified_sender.cc「sys2 RMS pattern 1」）
 Runtime rt{"CORR-LOT01-002", "F18", "ETCH01", "REQ-0002", "eap"};
 sys2::v1::VerifyRequest req;
 req.set_recipe_id("RCP_ETCH_V3");
 ```
-```text
-# wire out（實際 dump，ok=true）
-x-tool-id:                 ETCH01
-x-recipe-id:               RCP_ETCH_V3
-x-process-context-count:   0
-x-process-context-format:  urlencoded-query-string-v1
+```console
+$ ./build/unified_sender
+...
+=== sys2  Verify (tool id + recipe id)   (499 bytes metadata, ok=true) ===
+  x-request-id:              REQ-0002
+  x-correlation-id:          CORR-LOT01-002
+  x-contract-version:        v1
+  x-source-system:           eap
+  x-site-id:                 F18
+  x-tool-id:                 ETCH01
+  x-recipe-id:               RCP_ETCH_V3
+  x-process-context-count:   0
+  x-process-context-format:  urlencoded-query-string-v1
 ```
 receiver 端：直接讀 `x-recipe-id` 路由；count=0 → 無 context、無 digest（結構 header 仍在，不是漏了）。
 
 #### 案例 2 — recipe id + 3 lots in one FOUP（`sys2.recipe.download`）
 
-> 來源：跑 `./build/unified_sender`，找 `=== sys2  Download` 區塊；code 在
-> `sender/unified_sender.cc` 的「sys2 RMS pattern 2」。
-
 ```cpp
-// sender in
+// sender in（unified_sender.cc「sys2 RMS pattern 2」）
 req.set_recipe_id("RCP_ETCH_V3");
 for (const char* lot : {"LOT01", "LOT02", "LOT03"})
   req.add_contexts()->set_lot_id(lot);          // 只填 LotID（sparse）
 ```
-```text
-# wire out（實際 dump，ok=true）
-x-recipe-id:               RCP_ETCH_V3
-x-process-context-count:   3
-x-process-context-digest:  sha256:dcddb76b4f04369106735d95a82fb44afe0bd8a6ebd0e9f248276b4c50e90799
-x-process-context:         ChamberId=&LotID=LOT01&OperationNO=&PartID=&RecipeID=&StageID=&Tech=
-x-process-context:         ChamberId=&LotID=LOT02&OperationNO=&PartID=&RecipeID=&StageID=&Tech=
-x-process-context:         ChamberId=&LotID=LOT03&OperationNO=&PartID=&RecipeID=&StageID=&Tech=
+```console
+$ ./build/unified_sender
+...
+=== sys2  Download (recipe id + 3 lots in one FOUP)   (976 bytes metadata, ok=true) ===
+  x-request-id:              REQ-0006
+  x-correlation-id:          CORR-FOUP-006
+  x-contract-version:        v1
+  x-source-system:           eap
+  x-site-id:                 F18
+  x-tool-id:                 ETCH01
+  x-recipe-id:               RCP_ETCH_V3
+  x-process-context-count:   3
+  x-process-context-format:  urlencoded-query-string-v1
+  x-process-context-digest:  sha256:dcddb76b4f04369106735d95a82fb44afe0bd8a6ebd0e9f248276b4c50e90799
+  x-process-context:         ChamberId=&LotID=LOT01&OperationNO=&PartID=&RecipeID=&StageID=&Tech=
+  x-process-context:         ChamberId=&LotID=LOT02&OperationNO=&PartID=&RecipeID=&StageID=&Tech=
+  x-process-context:         ChamberId=&LotID=LOT03&OperationNO=&PartID=&RecipeID=&StageID=&Tech=
 ```
 ```cpp
 // receiver out（test_projection 斷言，全過）
@@ -138,57 +142,74 @@ ParseContext(context_lines[2])["LotID"] == "LOT03"   // 已 url-decode，body �
 
 #### 案例 3 — recipe 沒填（required 失敗，不 throw）
 
-> 來源：`tests/test_projection.cc` 的「sys2 RMS pattern 1」區塊（`./build.sh` 已跑過）；
-> `unified_sender` 的 sys3 EMPTY mask 區塊是同一行為的 dump 版。
-
 ```cpp
-// sender in：recipe_id 忘了 set
+// sender in（unified_sender.cc「sys2 RMS pattern 1b」：recipe_id 忘了 set）
 sys2::v1::VerifyRequest req;
 ```
-```text
-# wire out（ok=false, issue=MissingRequired）
-x-routing-error:           missing:x-recipe-id
-（x-recipe-id 不出現 —— 絕不發空 header）
+```console
+$ ./build/unified_sender
+...
+=== sys2  Verify (EMPTY recipe -> x-routing-error)   (513 bytes metadata, ok=false) ===
+  x-request-id:              REQ-0002b
+  x-correlation-id:          CORR-LOT01-002b
+  x-contract-version:        v1
+  x-source-system:           eap
+  x-site-id:                 F18
+  x-tool-id:                 ETCH01
+  x-routing-error:           missing:x-recipe-id
+  x-process-context-count:   0
+  x-process-context-format:  urlencoded-query-string-v1
+  [issue] missing-required x-recipe-id
 ```
-receiver / gateway 端：看到 `x-routing-error` 就知道投影失敗、原因是什麼；sender process 不會死，要不要送由 sender policy 決定。
+`x-recipe-id` 不出現（絕不發空 header）。receiver / gateway 看 `x-routing-error` 就知道投影失敗、
+原因是什麼；sender process 不會死，要不要送由 sender policy 決定。
 
 #### 案例 4 — 真實形狀 `rqst_RMS_GetRecipeSet`（路線 A：camelCase + 自家 LotInfo）
 
-> 來源：跑 `./build/unified_sender`，找 `=== sys2  GetRecipeSet` 區塊；code 在
-> `sender/unified_sender.cc` 的「sys2 RMS pattern 3」，斷言在 `test_projection.cc`
-> 的 sys2 real-shape 區塊；proto 就是 §2 開頭那段。
-
 ```cpp
-// sender in（注意 getter 是小寫：set_recipeid）
+// sender in（unified_sender.cc「sys2 RMS pattern 3」；注意 getter 是小寫：set_recipeid）
 sys2::v1::rqst_RMS_GetRecipeSet req;
 req.set_eqpid("ETCH01");                              // 沒 tag → 只留在 body
 req.set_recipeid("RCP/V3");                           // 有 '/'，看 encoding
 for (const char* l : {"LOT01", "LOT02", "LOT03"}) req.add_lotinfo()->set_lotid(l);
 ```
-```text
-# wire out（實際 dump，ok=true）
-x-recipe-id:               RCP%2FV3          ← '/' 被 url-encode
-x-process-context-count:   3
-x-process-context-digest:  sha256:104c4199ef361c2bc1106ebb788bb3f36534ebbaa5369ccf47c26520b9975871
-x-process-context:         LotID=LOT01       ← 自家 message：只出有 tag 的 key
-x-process-context:         LotID=LOT02
-x-process-context:         LotID=LOT03
+```console
+$ ./build/unified_sender
+...
+=== sys2  GetRecipeSet (real shape: own LotInfo)   (801 bytes metadata, ok=true) ===
+  x-request-id:              REQ-0007
+  x-correlation-id:          CORR-RMS-007
+  x-contract-version:        v1
+  x-source-system:           eap
+  x-site-id:                 F18
+  x-tool-id:                 ETCH01
+  x-recipe-id:               RCP%2FV3
+  x-process-context-count:   3
+  x-process-context-format:  urlencoded-query-string-v1
+  x-process-context-digest:  sha256:104c4199ef361c2bc1106ebb788bb3f36534ebbaa5369ccf47c26520b9975871
+  x-process-context:         LotID=LOT01
+  x-process-context:         LotID=LOT02
+  x-process-context:         LotID=LOT03
 ```
 ```cpp
-// receiver out
+// receiver out（test_projection 斷言，全過）
 VerifyDigest(cs, dg).ok == true
 ParseContext(cs[2])["LotID"] == "LOT03"
 ```
-跟案例 2 對照：路線 A 每行只有 `LotID=`（你 tag 了什麼出什麼），路線 B 是統一的 7-key 格式。
+注意 `x-recipe-id: RCP%2FV3`（`/` 被 url-encode）；跟案例 2 對照：路線 A 每行只有
+`LotID=`（你 tag 了什麼出什麼），路線 B 是統一的 7-key 格式。
 
-#### 案例 5 — receiver 竄改偵測（`receiver_verify` 實際輸出）
+#### 案例 5 — receiver 竄改偵測
 
-> 來源：跑 `./build/receiver_verify`（整個輸出就是這個案例）；code 在
-> `receiver/receiver_verify.cc`。
+```console
+$ ./build/receiver_verify
+=== received 2 process-context header(s) ===
+  LotID=LOT01 ChamberId=CH-A RecipeID=RCP_ETCH_V3
+  LotID=LOT02 ChamberId=CH-B RecipeID=RCP_ETCH_V3
 
-```text
 [accept] digest check: OK (header matches body)
-  expected: sha256:efafba16…    actual: sha256:efafba16…
+  expected: sha256:efafba166aabd1be8ef91d0751220f106077b06d14940254322a23da966bd1dd
+  actual:   sha256:efafba166aabd1be8ef91d0751220f106077b06d14940254322a23da966bd1dd
 
 [reject] tampered body (CH-A->CH-X): rejected (mismatch caught)
   expected: sha256:efafba166aabd1be8ef91d0751220f106077b06d14940254322a23da966bd1dd
@@ -197,7 +218,8 @@ ParseContext(cs[2])["LotID"] == "LOT03"
 
 result: PASS (clean accepted, tampered rejected)
 ```
-中途有人動了 context header（或 header/body 漂移），digest 對不上 → receiver 拒收，不會靜默吃下去。
+code 在 `receiver/receiver_verify.cc`。中途有人動了 context header（或 header/body 漂移），
+digest 對不上 → receiver 拒收，不會靜默吃下去。
 
 ## 3. 一步步加你自己的 management system（例：nrms）
 

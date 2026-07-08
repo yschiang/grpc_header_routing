@@ -1,16 +1,27 @@
 // sys2 system — Recipe Management. 5 transactions.
 //
-// Shares the universal process-context. In practice sys2 often fills only RecipeID
-// (the rest project as empty `Key=`), and sys2.recipe.list carries zero contexts
-// (count=0) — both are exercised by the unified sender demo.
+// RMS adoption pattern (the two shapes an RMS owner needs):
+//   Verify   — tool id (Runtime -> x-tool-id) + ONE recipe id: keep your recipe_id
+//              field where it is, add one (routing.project) tag -> x-recipe-id.
+//   Download — same, plus multiple lot ids in one FOUP: one ProcessContext per lot
+//              (sparse fill is fine; empty fields project as `Key=`).
+// sys2.recipe.list carries zero contexts (count=0). All three are exercised by the
+// unified sender demo and pinned by test_projection.
 syntax = "proto3";
 
 package sys2.v1;
 
+import "metadata_options.proto";   // Verify/Download apply (routing.project) -> needs the options
 import "process_context.proto";
 
-message VerifyRequest   { repeated common.v1.ProcessContext contexts = 1; }
-message DownloadRequest { repeated common.v1.ProcessContext contexts = 1; }
+message VerifyRequest {
+  repeated common.v1.ProcessContext contexts = 1;
+  string recipe_id = 2 [(routing.project) = {key: "x-recipe-id", required: true}];
+}
+message DownloadRequest {
+  repeated common.v1.ProcessContext contexts = 1;   // one per lot in the FOUP
+  string recipe_id = 2 [(routing.project) = {key: "x-recipe-id", required: true}];
+}
 message QualifyRequest  { repeated common.v1.ProcessContext contexts = 1; }
 message UploadRequest   { repeated common.v1.ProcessContext contexts = 1; }
 message ListRequest     { repeated common.v1.ProcessContext contexts = 1; }

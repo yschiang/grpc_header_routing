@@ -2,7 +2,8 @@
 // =============================================================================
 // tests — projection, round-trip, digest, overflow (count AND bytes), scalar.
 // Plain asserts, zero test deps. Covers the two code paths: process-context (sys1)
-// and scalar projection (sys3). sys2 is an sys1 subset, exercised by the sender.
+// and scalar projection (sys3) — plus sys2 RMS, which combines both in one message
+// (x-recipe-id scalar + per-lot contexts).
 // =============================================================================
 #include <cassert>
 #include <cstdio>
@@ -18,6 +19,7 @@
 #include "common/sha256.h"
 #include "common/url_encode.h"
 #include "sys1.proj.h"
+#include "sys2.proj.h"
 #include "sys3.proj.h"
 
 // n contexts; recipe lets us test encoding ('/'), pad inflates each context to test
@@ -184,6 +186,51 @@ int main() {
     assert(r2.issues[0].key == "x-mask-id");
     assert(s2.Get("x-routing-error") == "missing:x-mask-id");      // explicit, in-band
     assert(s2.Get("x-mask-id").empty());                           // empty header NOT emitted
+  }
+
+  // --- sys2 RMS pattern 1: tool id (Runtime) + ONE recipe id -> x-recipe-id ---
+  {
+    sys2::v1::VerifyRequest req;
+    req.set_recipe_id("RCP/ETCH V3");                              // needs encoding
+    routingmeta::VectorSink sink;
+    routingmeta::ProjResult r = ProjectMeta(req, sink);
+    assert(r.ok && r.issues.empty());
+    assert(sink.Get("x-recipe-id") == "RCP%2FETCH%20V3");          // url-encoded scalar
+    assert(sink.Get("x-process-context-count") == "0");            // no lots on verify
+
+    sys2::v1::VerifyRequest empty;                                 // recipe not set
+    routingmeta::VectorSink s2;
+    routingmeta::ProjResult r2 = ProjectMeta(empty, s2);           // required -> issue, no throw
+    assert(!r2.ok);
+    assert(r2.issues.size() == 1 && r2.issues[0].kind == routingmeta::Issue::MissingRequired);
+    assert(s2.Get("x-routing-error") == "missing:x-recipe-id");
+    assert(s2.Get("x-recipe-id").empty());
+  }
+
+  // --- sys2 RMS pattern 2: recipe id + multiple lot ids (one FOUP) in ONE message.
+  //     Scalar and process-context projections compose; sparse contexts (only LotID)
+  //     project the other keys as faithful `Key=`. ---
+  {
+    sys2::v1::DownloadRequest req;
+    req.set_recipe_id("RCP_ETCH_V3");
+    for (const char* lot : {"LOT01", "LOT02", "LOT03"})
+      req.add_contexts()->set_lot_id(lot);
+    routingmeta::VectorSink sink;
+    routingmeta::ProjResult r = ProjectMeta(req, sink);
+    assert(r.ok && r.issues.empty());
+    assert(sink.Get("x-recipe-id") == "RCP_ETCH_V3");
+    assert(sink.Count("x-process-context") == 3);
+    assert(sink.Get("x-process-context-count") == "3");
+    assert(sink.Get("x-process-context") ==                        // sparse pin: Key= kept, key-sorted
+           "ChamberId=&LotID=LOT01&OperationNO=&PartID=&RecipeID=&StageID=&Tech=");
+
+    std::vector<std::string> cs; std::string dg;
+    for (auto& kv : sink.items) {
+      if (kv.first == "x-process-context") cs.push_back(kv.second);
+      else if (kv.first == "x-process-context-digest") dg = kv.second;
+    }
+    assert(cs[2].find("LotID=LOT03") != std::string::npos);        // body order kept
+    assert(routingmeta::VerifyDigest(cs, dg).ok);                  // receiver-side round-trip
   }
 
   // --- uniform_across_repeated: N jobs duplicate ONE mask id; project element[0],

@@ -84,13 +84,28 @@ int main() {
     dump("sys1  Calculate (2 contexts)", sink, r);     // [demo]
   }
 
-  // --- sys2  sys2.recipe.verify — 1 sparse context (only RecipeID; rest empty) ---
+  // --- sys2 RMS pattern 1  sys2.recipe.verify — tool id + ONE recipe id ---
+  // tool id rides in Runtime -> x-tool-id (sender-known, Layer 1); the recipe id is
+  // body data -> auto-projected to x-recipe-id by the (routing.project) tag.
   {
     sys2::v1::VerifyRequest req;                          // [app]
-    req.add_contexts()->set_recipe_id("RCP_ETCH_V3");    // [app] business data
+    req.set_recipe_id("RCP_ETCH_V3");                    // [app] business data -> x-recipe-id
     routingmeta::VectorSink sink;                        // [+meta]
     routingmeta::ProjResult r = Send(req, Runtime{"CORR-LOT01-002", "F18", "ETCH01", "REQ-0002", "eap"}, sink);  // [+meta]
-    dump("sys2  Verify (1 sparse context)", sink, r);        // [demo]
+    dump("sys2  Verify (tool id + recipe id)", sink, r);     // [demo]
+  }
+
+  // --- sys2 RMS pattern 2  sys2.recipe.download — tool id + recipe id + FOUP lots ---
+  // Multiple lot ids in ONE message: one ProcessContext per lot (sparse fill: only
+  // LotID; the other keys project as `Key=`). N lots -> N x-process-context lines.
+  {
+    sys2::v1::DownloadRequest req;                        // [app]
+    req.set_recipe_id("RCP_ETCH_V3");                    // [app] -> x-recipe-id
+    for (const char* lot : {"LOT01", "LOT02", "LOT03"})  // [app] the lots in the FOUP
+      req.add_contexts()->set_lot_id(lot);               // [app] -> x-process-context: ...LotID=...
+    routingmeta::VectorSink sink;                        // [+meta]
+    routingmeta::ProjResult r = Send(req, Runtime{"CORR-FOUP-006", "F18", "ETCH01", "REQ-0006", "eap"}, sink);  // [+meta]
+    dump("sys2  Download (recipe id + 3 lots in one FOUP)", sink, r);  // [demo]
   }
 
   // --- sys2  sys2.recipe.list — zero contexts (count=0) ---

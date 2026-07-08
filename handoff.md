@@ -80,13 +80,17 @@ cd grpc-routing-meta/example
 | sender 接法（GrpcSink 編譯條件、source_system 是呼叫端身分） | TUTORIAL §4 |
 | receiver 驗法（VerifyDigest verify-if-present、ParseContext） | TUTORIAL §5 + `receiver/receiver_verify.cc` |
 
-## 4. Suggested skills（接手 agent 建議調用）
+## 4. 工作方法（任何 agent / 人皆適用；環境有對應 skill 就調用，沒有就照文字做）
 
-- `superpowers:test-driven-development` — Step 2/4 加新系統時：先寫 test_projection 區塊的期望值再下 tag。
-- `verify` — 每個 step 完成後端到端實跑（不是只看編譯過）。
-- `superpowers:systematic-debugging` / `investigate` — build.sh 紅燈且 §3.3 錯誤表查不到時。
-- `code-review` — commit 前對 diff 跑一輪。
-- `cpp-production-readiness` — 全部完成、要當「可上線」驗收時。
+- **測試先行**（Claude Code skill：`superpowers:test-driven-development`）——Step 2 加新系統時，
+  先在 test_projection 寫下期望的 header 值再下 tag，讓紅→綠告訴你 tag 對了沒。
+- **端到端實跑驗證**（skill：`verify`）——每個 step 完成後跑 binary 看實際輸出，
+  不是只看編譯過；§2 Step 1/4 的指令和預期輸出就是驗證腳本。
+- **紅燈系統化排查**（skill：`superpowers:systematic-debugging`）——build.sh 紅燈先查
+  TUTORIAL §3.3 錯誤表；查不到再從 plugin 的錯誤字串反查 `src/plugin/protoc-gen-meta.cc`，
+  不要猜著改。
+- **commit 前自我 review**（skill：`code-review`）——對 diff 檢查：是否最小改動、
+  是否有測試釘住、commit 訊息是否符合 §0 規則。
 
 ## 5. 未做 / 已知開口（接手可選）
 

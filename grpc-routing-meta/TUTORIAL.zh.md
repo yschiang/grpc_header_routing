@@ -79,12 +79,21 @@ cd example && ./build.sh        # 全綠 gate：codegen 驗證 + 測試 + receiv
 
 ### 2.1 實跑案例 — sender in → wire → receiver out
 
-以下輸出**不是示意，是實跑結果**：wire dump 來自 `./build/unified_sender`，
-receiver 輸出來自 `./build/receiver_verify`，斷言值來自 `./build/test_projection`
-（30+ 斷言，`./build.sh` 每次全跑，目前全綠）。common 6 headers（x-request-id 等）
-每案都在，下面只列跟案例有關的行。
+剛才 `./build.sh` 已經把測試全跑過了。現在自己跑兩個 binary，輸出就是下面的案例：
+
+```bash
+./build/unified_sender    # 印每筆交易 attach 了哪些 headers → 案例 1、2 的 wire dump
+./build/receiver_verify   # receiver 端 digest 驗證：clean 收、tampered 拒 → 案例 5
+```
+
+案例 3、4 是 `test_projection` 的斷言（`./build.sh` 每次自動跑，剛剛就是全綠）。
+每案開頭都標了來源和 source 檔，想改數字自己玩就改那個檔重跑。以下輸出
+**不是示意，是實跑結果**；common 6 headers（x-request-id 等）每案都在，只列相關行。
 
 #### 案例 1 — tool id + 單一 recipe id（`sys2.recipe.verify`）
+
+> 來源：跑 `./build/unified_sender`，找 `=== sys2  Verify` 區塊；code 在
+> `sender/unified_sender.cc` 的「sys2 RMS pattern 1」。
 
 ```cpp
 // sender in
@@ -102,6 +111,9 @@ x-process-context-format:  urlencoded-query-string-v1
 receiver 端：直接讀 `x-recipe-id` 路由；count=0 → 無 context、無 digest（結構 header 仍在，不是漏了）。
 
 #### 案例 2 — recipe id + 3 lots in one FOUP（`sys2.recipe.download`）
+
+> 來源：跑 `./build/unified_sender`，找 `=== sys2  Download` 區塊；code 在
+> `sender/unified_sender.cc` 的「sys2 RMS pattern 2」。
 
 ```cpp
 // sender in
@@ -127,6 +139,9 @@ ParseContext(context_lines[2])["LotID"] == "LOT03"   // 已 url-decode，body �
 
 #### 案例 3 — recipe 沒填（required 失敗，不 throw）
 
+> 來源：`tests/test_projection.cc` 的「sys2 RMS pattern 1」區塊（`./build.sh` 已跑過）；
+> `unified_sender` 的 sys3 EMPTY mask 區塊是同一行為的 dump 版。
+
 ```cpp
 // sender in：recipe_id 忘了 set
 sys2::v1::VerifyRequest req;
@@ -139,6 +154,9 @@ x-routing-error:           missing:x-recipe-id
 receiver / gateway 端：看到 `x-routing-error` 就知道投影失敗、原因是什麼；sender process 不會死，要不要送由 sender policy 決定。
 
 #### 案例 4 — ms fixture：真實形狀（路線 A：camelCase + 自家 LotInfo）
+
+> 來源：`tests/test_projection.cc` 的 ms 區塊（`./build.sh` 已跑過）；proto 就是
+> §2 開頭那份 `proto/ms.proto`。
 
 ```cpp
 // sender in（proto/ms.proto；注意 getter 是小寫：set_recipeid）
@@ -163,6 +181,9 @@ ParseContext(cs[2])["LotID"] == "LOT03"
 跟案例 2 對照：路線 A 每行只有 `LotID=`（你 tag 了什麼出什麼），路線 B 是統一的 7-key 格式。
 
 #### 案例 5 — receiver 竄改偵測（`receiver_verify` 實際輸出）
+
+> 來源：跑 `./build/receiver_verify`（整個輸出就是這個案例）；code 在
+> `receiver/receiver_verify.cc`。
 
 ```text
 [accept] digest check: OK (header matches body)

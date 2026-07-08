@@ -181,8 +181,9 @@ in `unified_sender.cc` shows.
 
 Steps 1–4 use an in-memory `VectorSink`. This step sends the projected metadata
 over a **real HTTP/2 gRPC channel** to a live server, for all three systems.
-Needs a local `grpc++` + `grpc_cpp_plugin` (set `GRPC_PREFIX`, default
-`~/anaconda3`); run `./build.sh` first.
+Needs a local `grpc++` + `grpc_cpp_plugin` (set `GRPC_PREFIX`; default `/usr`,
+i.e. apt's `libgrpc++-dev` on Ubuntu — override for Homebrew/anaconda/etc.);
+run `./build.sh` first.
 
 ```sh
 ./grpc_demo/run.sh

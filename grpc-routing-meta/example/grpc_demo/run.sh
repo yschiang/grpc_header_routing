@@ -3,14 +3,16 @@
 # (run ../build.sh first), generates the gRPC stub, builds a server + client, and
 # runs one clean call (verifies) and one tampered call (rejected) over HTTP/2.
 #
-# Needs a local grpc++ + grpc_cpp_plugin. Point GRPC_PREFIX at it (default: anaconda).
+# Needs a local grpc++ + grpc_cpp_plugin. Point GRPC_PREFIX at it (default: /usr,
+# i.e. apt's libgrpc++-dev on Ubuntu/Debian — override for Homebrew/anaconda/etc,
+# e.g. GRPC_PREFIX=$HOME/anaconda3 ./run.sh).
 set -euo pipefail
 cd "$(dirname "$0")"
 HERE="$(pwd)"; EXAMPLE="$(cd .. && pwd)"
 GEN="$EXAMPLE/build/generated"
 [ -f "$GEN/sys1.proj.cc" ] || { echo "run ../build.sh first (need $GEN)"; exit 1; }
 
-PREFIX="${GRPC_PREFIX:-$HOME/anaconda3}"
+PREFIX="${GRPC_PREFIX:-/usr}"
 PROTOC="$PREFIX/bin/protoc"
 GRPC_PLUGIN="$PREFIX/bin/grpc_cpp_plugin"
 CXX="${CXX:-clang++}"

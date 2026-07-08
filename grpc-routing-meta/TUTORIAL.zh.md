@@ -35,6 +35,18 @@ PROTOC=/opt/protobuf/bin/protoc CXX=clang++ ./build.sh
 
 `build.sh` 用 pkg-config（沒有就從 protoc 位置推 prefix），不吃硬編路徑。
 
+**參考平台是 Ubuntu 22.04**——CI 五個 job 都跑在 `ubuntu-22.04`（`.github/workflows/ci.yml`），
+`example/Dockerfile` 是同一份 apt 配方（`protobuf-compiler libprotobuf-dev libprotoc-dev
+libgrpc++-dev`）包成可重現的 build：
+
+```bash
+cd example && docker build -t grpc-routing-meta .   # image build 本身就是綠燈驗證
+```
+
+k8s 環境（build 在 initContainer / CI pipeline 裡跑）用同一份 Dockerfile 或同樣的 apt 套件
+即可，本質是「在 Linux 容器裡重新原生 build」，跟本機不是同一份 binary、也不需要是。
+Mac 開發機（本文件其餘指令的預設環境）一樣走 `PROTOC=... CXX=... ./build.sh`。
+
 ### 1.1 舊 toolchain 相容性（sender 環境比較舊時看這節）
 
 **唯一真正要對齊的是 protobuf 版本**；gRPC 和 C++ 標準幾乎不構成限制：

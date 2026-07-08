@@ -234,7 +234,7 @@ int main() {
     assert(routingmeta::VerifyDigest(cs, dg).ok);                  // receiver-side round-trip
   }
 
-  // --- nrms: real-world adoption fixture (ADOPTION.zh.md route A). Pins two things
+  // --- nrms: real-world adoption fixture (TUTORIAL.zh.md route A). Pins two things
   //     the sysN protos can't: camelCase fields -> lowercased C++ getters in the
   //     generated code, and (routing.pctx) on the system's OWN lot message. ---
   {

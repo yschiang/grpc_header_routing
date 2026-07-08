@@ -1,4 +1,4 @@
-# ADOPTION — 把 kit 帶回 local env，接上真實 sys2 RMS proto
+# TUTORIAL — 把 kit 帶回 local env，接上真實 sys2 RMS proto
 
 目標讀者：RMS owner（receiver）與 sender owner。照本文從零走到「真實 proto build 過、
 headers 上線、receiver 驗過」。demo 版對照：`example/proto/sys2.proto` +
@@ -183,7 +183,107 @@ auto kv = routingmeta::ParseContext(context_lines[0]);              // kv["LotID
 
 可執行參考：`example/receiver/receiver_verify.cc`（含竄改偵測），`./build.sh` 每次都會跑它。
 
-## 5. 「能不能直接套用」驗收清單
+## 5. 實跑測試案例 — sender in → wire → receiver out
+
+以下輸出**不是示意，是實跑結果**：wire dump 來自 `./build/unified_sender`，
+receiver 輸出來自 `./build/receiver_verify`，斷言值來自 `./build/test_projection`
+（30+ 斷言，`./build.sh` 每次全跑，目前全綠）。common 6 headers（x-request-id 等）
+每案都在，下面只列跟案例有關的行。
+
+### 案例 1 — tool id + 單一 recipe id（`sys2.recipe.verify`）
+
+```cpp
+// sender in
+Runtime rt{"CORR-LOT01-002", "F18", "ETCH01", "REQ-0002", "eap"};
+sys2::v1::VerifyRequest req;
+req.set_recipe_id("RCP_ETCH_V3");
+```
+```text
+# wire out（實際 dump，ok=true）
+x-tool-id:                 ETCH01
+x-recipe-id:               RCP_ETCH_V3
+x-process-context-count:   0
+x-process-context-format:  urlencoded-query-string-v1
+```
+receiver 端：直接讀 `x-recipe-id` 路由；count=0 → 無 context、無 digest（結構 header 仍在，不是漏了）。
+
+### 案例 2 — recipe id + 3 lots in one FOUP（`sys2.recipe.download`）
+
+```cpp
+// sender in
+req.set_recipe_id("RCP_ETCH_V3");
+for (const char* lot : {"LOT01", "LOT02", "LOT03"})
+  req.add_contexts()->set_lot_id(lot);          // 只填 LotID（sparse）
+```
+```text
+# wire out（實際 dump，ok=true）
+x-recipe-id:               RCP_ETCH_V3
+x-process-context-count:   3
+x-process-context-digest:  sha256:dcddb76b4f04369106735d95a82fb44afe0bd8a6ebd0e9f248276b4c50e90799
+x-process-context:         ChamberId=&LotID=LOT01&OperationNO=&PartID=&RecipeID=&StageID=&Tech=
+x-process-context:         ChamberId=&LotID=LOT02&OperationNO=&PartID=&RecipeID=&StageID=&Tech=
+x-process-context:         ChamberId=&LotID=LOT03&OperationNO=&PartID=&RecipeID=&StageID=&Tech=
+```
+```cpp
+// receiver out（test_projection 斷言，全過）
+VerifyDigest(context_lines, digest).ok == true       // header 沒被動過
+ParseContext(context_lines[2])["LotID"] == "LOT03"   // 已 url-decode，body 順序
+```
+沒填的欄位出 `Key=`（present-but-empty）——這是 body 的忠實投影，receiver 不用猜「空」和「漏」。
+
+### 案例 3 — recipe 沒填（required 失敗，不 throw）
+
+```cpp
+// sender in：recipe_id 忘了 set
+sys2::v1::VerifyRequest req;
+```
+```text
+# wire out（ok=false, issue=MissingRequired）
+x-routing-error:           missing:x-recipe-id
+（x-recipe-id 不出現 —— 絕不發空 header）
+```
+receiver / gateway 端：看到 `x-routing-error` 就知道投影失敗、原因是什麼；sender process 不會死，要不要送由 sender policy 決定。
+
+### 案例 4 — 真實 NRMS 形狀（路線 A：camelCase + 自家 LotInfo）
+
+```cpp
+// sender in（proto/nrms.proto；注意 getter 是小寫：set_recipeid）
+nrms::v1::rqst_NRMS_GetRecipeSet req;
+req.set_eqpid("ETCH01");                              // 沒 tag → 只留在 body
+req.set_recipeid("RCP/V3");                           // 有 '/'，看 encoding
+for (const char* l : {"LOT01", "LOT02", "LOT03"}) req.add_lotinfo()->set_lotid(l);
+```
+```text
+# wire out（test_projection 斷言，全過）
+x-recipe-id:               RCP%2FV3          ← '/' 被 url-encode
+x-process-context-count:   3
+x-process-context:         LotID=LOT01       ← 自家 message：只出有 tag 的 key
+x-process-context:         LotID=LOT02
+x-process-context:         LotID=LOT03
+```
+```cpp
+// receiver out
+VerifyDigest(cs, dg).ok == true
+ParseContext(cs[2])["LotID"] == "LOT03"
+```
+跟案例 2 對照：路線 A 每行只有 `LotID=`（你 tag 了什麼出什麼），路線 B 是統一的 7-key 格式。
+
+### 案例 5 — receiver 竄改偵測（`receiver_verify` 實際輸出）
+
+```text
+[accept] digest check: OK (header matches body)
+  expected: sha256:efafba16…    actual: sha256:efafba16…
+
+[reject] tampered body (CH-A->CH-X): rejected (mismatch caught)
+  expected: sha256:efafba166aabd1be8ef91d0751220f106077b06d14940254322a23da966bd1dd
+  actual:   sha256:21a25e0cd63d2342ee9c4773ff43c34a7a1feda1fad3101e90ffba1651497ba1
+  error: digest mismatch: header/body projection drift
+
+result: PASS (clean accepted, tampered rejected)
+```
+中途有人動了 context header（或 header/body 漂移），digest 對不上 → receiver 拒收，不會靜默吃下去。
+
+## 6. 「能不能直接套用」驗收清單
 
 1. `./build.sh` 全綠（negative codegen gate + test_projection + receiver_verify）。
 2. 真實 proto 加進 SYSTEMS 後 build 過 —— tag 分類就是對的。

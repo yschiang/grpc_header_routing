@@ -1,4 +1,4 @@
-// Real-world adoption fixture — the ADOPTION.zh.md route-A worked example.
+// Real-world adoption fixture — the TUTORIAL.zh.md route-A worked example.
 // Mirrors a real fab RMS transaction: camelCase/PascalCase field names (protobuf
 // C++ getters lowercase these — pins the plugin's lowercase_name() handling) and
 // (routing.pctx) on the system's OWN repeated lot message instead of the shared

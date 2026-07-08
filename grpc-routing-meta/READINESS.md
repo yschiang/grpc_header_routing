@@ -1,4 +1,4 @@
-# Production-Readiness: grpc-routing-meta/example  →  NOT READY (one pending human sign-off)
+# Production-Readiness: grpc-routing-meta/example  →  READY
 
 _Gate re-run 2026-07-09 via the `cpp-production-readiness` skill (previous snapshot 2026-06-28
 superseded; its D2 tooling lesson is kept below). Scope: whole `example/` tree on branch
@@ -10,8 +10,8 @@ camelCase `rqst_RMS_GetRecipeSet`, four sender patterns), plugin `lowercase_name
 TUTORIAL.zh.md, README/DEMO/OVERVIEW sync, sanitizer + coverage cells added to `ci.yml`.
 
 **Every automated gate is green** — including the previously-GAP'd TSan (now clean locally AND
-wired in CI) and coverage (now 100%). The remaining blocker is the **D8 human sign-off**
-(owner re-sign after the doc overhaul). IWYU remains a named GAP.
+wired in CI) and coverage (now 100%). **D8 signed off by yschiang (human), 2026-07-09.**
+IWYU remains a named GAP, accepted by the owner with the READY sign-off.
 
 ## Discovered toolchain (Step 1)
 
@@ -41,7 +41,7 @@ wired in CI) and coverage (now 100%). The remaining blocker is the **D8 human si
 | 6a | Code quality (format / includes) | auto-gate | clang-format · IWYU | **ADVISORY · GAP** | hand-aligned columns documented (unchanged policy); **IWYU still not installed → GAP** |
 | 6b | Code quality (naming / comments / magic#) | sign-off | gate-review (AI)¹ | **PASS** | previous nit resolved: `process_context_emit.h:47-50` now names the `24/7/64→71` digest byte constants in the comment |
 | 7 | Observability | sign-off | gate-review (AI)¹ | **PASS** | unchanged: in-band `x-routing-error` / `-overflow` + `ProjResult`; new empty-recipe sender pattern demos it end-to-end |
-| 8 | Docs & review | sign-off | **yschiang (human)** | **PENDING RE-SIGN** | since 06-28: TUTORIAL.zh.md added (adopter path incl. §1.1 toolchain compat); README/DEMO/OVERVIEW synced to sys2 RMS state; 16-vs-21 now stated in OVERVIEW ("~21 real scope, example demos 16") — owner to confirm framing + re-sign |
+| 8 | Docs & review | sign-off | **yschiang (human)** | **PASS** | **confirmed by yschiang, 2026-07-09** — TUTORIAL.zh.md added (adopter path incl. §1.1 toolchain compat); README/DEMO/OVERVIEW synced to sys2 RMS state; 16-vs-21 framing accepted |
 | 9 | Memory safety | auto-gate | ASan+UBSan + `leaks` | **PASS** | ASan+UBSan (`-fno-sanitize=vptr,function`): 3 drivers clean; `leaks --atExit`: 0 leaks × 4 binaries |
 
 ¹ Sign-offs D4b/D5b/D6b/D7 reviewed by the cpp-production-readiness gate (AI), delegated by
@@ -53,10 +53,9 @@ clang-tidy without a real compilation database / sysroot parses a recovery AST a
 confident false positives — always pass `compile_commands.json` or `-isysroot $(xcrun --show-sdk-path)`
 and verify zero `clang-diagnostic-error` before trusting findings.
 
-## Blockers (to reach READY)
-1. **D8 — owner re-sign (yschiang)** — the docs were overhauled this session (TUTORIAL, README/DEMO/
-   OVERVIEW sync, 16-vs-21 framing now explicit). Needs the owner to confirm and attest. The only hard blocker.
-2. **GAP — IWYU** not installed (unused-include check unverified).
+## Blockers
+None. D8 attested by yschiang (2026-07-09). Accepted GAP: IWYU not installed
+(unused-include check unverified) — accepted by the owner with the READY sign-off.
 
 ## Commands run (reproduce, 2026-07-09)
 ```

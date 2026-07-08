@@ -35,6 +35,35 @@ PROTOC=/opt/protobuf/bin/protoc CXX=clang++ ./build.sh
 
 `build.sh` 用 pkg-config（沒有就從 protoc 位置推 prefix），不吃硬編路徑。
 
+### 1.1 舊 toolchain 相容性（sender 環境比較舊時看這節）
+
+**唯一真正要對齊的是 protobuf 版本**；gRPC 和 C++ 標準幾乎不構成限制：
+
+| 元件 | 底線 | 說明 |
+|---|---|---|
+| gRPC | 任何 1.x | kit 只用一個 API：`GrpcSink` 裡的 `AddMetadata`（gRPC 1.0 起就有）。wire 上 metadata 就是 HTTP/2 headers：全小寫 ASCII key、純 ASCII value（不用 `-bin`）、重複 header 行、總量 7168 bytes——都刻意壓在最舊版本與收端預設 `GRPC_ARG_MAX_METADATA_SIZE`（8KB）之內。舊 sender ↔ 新 receiver 互通是 gRPC 的 wire 承諾 |
+| C++ | sender 端 C++14 | 生成的 `.proj.cc` + runtime headers 以 `-std=c++14` 實測可編。C++17 是 build 這整個 repo（含 plugin）的需求，不是 sender app 的底線 |
+| protobuf | 跟 sender 環境同一套 | 見下 |
+
+**protobuf 的規則一條**：codegen 全程用 sender 環境的那套 toolchain——plugin 用他們的
+libprotoc 編、`protoc` 用他們的版本跑、生成碼用他們的 headers 編，也就是
+`PROTOC=... CXX=... ./build.sh`。實測過 3.20/3.21；plugin 只用十年未變的 descriptor
+API，更舊理論上可編，但別猜：**用他們的 toolchain 跑一次 `./build.sh`，全綠即相容**。
+
+**proto3 `optional` 的分界**（真實 proto 常見，如 `optional int32 epoFlagNo`）：
+
+| protoc | `optional` 支援 |
+|---|---|
+| < 3.12 | 不支援，直接編譯錯誤 |
+| 3.12–3.14 | 要加 `--experimental_allow_proto3_optional` |
+| ≥ 3.15 | 正式支援 |
+
+sender 卡在 3.15 以下時：共用 proto **以艦隊最舊的 toolchain 為準**，先不寫 `optional`
+（兩邊各養一份差一個 `optional` 的 proto 就是 schema drift）。wire 上 `optional` 和普通
+欄位編碼相同，互通不會爆，唯一損失是舊 sender「明確填 0」和「沒填」在 receiver 端
+分不出來；真需要 presence 語義用 wrapper type（`google.protobuf.Int32Value`，3.0 起可用）。
+kit 本身不受影響——投影只看 string getter + `.empty()`，不碰 presence bit。
+
 ## 2. 先跑既有的 sys2 RMS，看懂一次完整流程
 
 demo 裡的 RMS 就是 **sys2**（`example/proto/sys2.proto`），三種 shape 都已 tag 好、

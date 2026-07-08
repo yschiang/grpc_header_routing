@@ -2,7 +2,7 @@
 
 目標讀者：RMS owner（receiver）與 sender owner。照本文從零走到「真實 proto build 過、
 headers 上線、receiver 驗過」。demo 版對照：`example/proto/sys2.proto` +
-`example/sender/unified_sender.cc` 的兩個 sys2 pattern + `example/tests/test_projection.cc`。
+`example/sender/unified_sender.cc` 的三個 sys2 pattern + `example/tests/test_projection.cc`。
 
 ---
 
@@ -34,27 +34,26 @@ PROTOC=/opt/protobuf/bin/protoc CXX=clang++ ./build.sh
 
 `build.sh` 用 pkg-config（沒有就從 protoc 位置推 prefix），不吃硬編路徑。
 
-## 2. 先跑既有的 ms，看懂一次完整流程
+## 2. 先跑既有的 sys2 RMS，看懂一次完整流程
 
-repo 內建一個 **ms（management system）fixture**：`example/proto/ms.proto`。它就是
-真實 fab 交易的形狀——camelCase 欄位、自家的 repeated lot message——而且已經 tag 好、
-接進 build 和測試。先跑它、看懂 in/out，再加你自己的系統。
+demo 裡的 RMS 就是 **sys2**（`example/proto/sys2.proto`），三種 shape 都已 tag 好、
+接進 build 和測試。先跑它、看懂 in/out，再加你自己的系統。其中
+`rqst_RMS_GetRecipeSet` 是真實 fab 交易的形狀——camelCase 欄位、自家的 repeated
+lot message——[+meta] 只有 2 行 tag：
 
 ```proto
-// example/proto/ms.proto（全文就這麼短；[+meta] 只有 1 個 import + 2 行 tag）
-import "metadata_options.proto";                            // [+meta]
-
-message Typ_MSLotInfo {
+// example/proto/sys2.proto（節錄；完整檔就在那）
+message Typ_RMSLotInfo {
   string LotId = 1 [(routing.pctx) = {key:"LotID"}];        // [+meta] 多值 → context 行
   string carrierId = 2;
 }
-message rqst_MS_GetRecipeSet {
+message rqst_RMS_GetRecipeSet {
   msgHeader msgHdr = 1;
   string eqpId = 2;                                         // 不 tag：tool id 走 Runtime
   string recipeId = 3 [(routing.project) = {key:"x-recipe-id", required:true}];  // [+meta] 單值 → header
   int32 levelNo = 4;
   ...
-  repeated Typ_MSLotInfo LotInfo = 7;
+  repeated Typ_RMSLotInfo LotInfo = 7;
 }
 ```
 
@@ -62,19 +61,19 @@ message rqst_MS_GetRecipeSet {
 cd example && ./build.sh        # 全綠 gate：codegen 驗證 + 測試 + receiver
 ```
 
-輸出裡跟 ms 有關的兩行：
+輸出裡跟 sys2 有關的兩行：
 
 ```text
-[gen ] ms.proto (cpp + meta)     ← plugin 驗證 tag、產生投影碼
-[test] run test_projection      → ALL TESTS PASSED（含 ms 區塊）
+[gen ] sys2.proto (cpp + meta)   ← plugin 驗證 tag、產生投影碼
+[test] run test_projection      → ALL TESTS PASSED（含 sys2 三個 shape 的區塊）
 ```
 
 然後看三個地方，流程就通了：
 
-1. **tag 換到了什麼** — `build/generated/ms.proj.h`：一個
-   `ProjectMeta(const ms::v1::rqst_MS_GetRecipeSet&, MetadataSink&, ...)`，投影碼全是生成的。
-2. **填什麼、出什麼** — `tests/test_projection.cc` 的 ms 區塊；完整 sender in → wire →
-   receiver out 就在下面 §2.1 案例 4。
+1. **tag 換到了什麼** — `build/generated/sys2.proj.h`：每個有 tag 的 message 一個
+   `ProjectMeta(const sys2::v1::rqst_RMS_GetRecipeSet&, MetadataSink&, ...)`，投影碼全是生成的。
+2. **填什麼、出什麼** — `tests/test_projection.cc` 的 sys2 區塊；完整 sender in → wire →
+   receiver out 就在下面 §2.1。
 3. **上線時 sender 怎麼接** — `sender/unified_sender.cc`（§4，就 2 行）。
 
 ### 2.1 實跑案例 — sender in → wire → receiver out
@@ -82,11 +81,11 @@ cd example && ./build.sh        # 全綠 gate：codegen 驗證 + 測試 + receiv
 剛才 `./build.sh` 已經把測試全跑過了。現在自己跑兩個 binary，輸出就是下面的案例：
 
 ```bash
-./build/unified_sender    # 印每筆交易 attach 了哪些 headers → 案例 1、2 的 wire dump
+./build/unified_sender    # 印每筆交易 attach 了哪些 headers → 案例 1、2、4 的 wire dump
 ./build/receiver_verify   # receiver 端 digest 驗證：clean 收、tampered 拒 → 案例 5
 ```
 
-案例 3、4 是 `test_projection` 的斷言（`./build.sh` 每次自動跑，剛剛就是全綠）。
+案例 3 是 `test_projection` 的斷言（`./build.sh` 每次自動跑，剛剛就是全綠）。
 每案開頭都標了來源和 source 檔，想改數字自己玩就改那個檔重跑。以下輸出
 **不是示意，是實跑結果**；common 6 headers（x-request-id 等）每案都在，只列相關行。
 
@@ -153,22 +152,24 @@ x-routing-error:           missing:x-recipe-id
 ```
 receiver / gateway 端：看到 `x-routing-error` 就知道投影失敗、原因是什麼；sender process 不會死，要不要送由 sender policy 決定。
 
-#### 案例 4 — ms fixture：真實形狀（路線 A：camelCase + 自家 LotInfo）
+#### 案例 4 — 真實形狀 `rqst_RMS_GetRecipeSet`（路線 A：camelCase + 自家 LotInfo）
 
-> 來源：`tests/test_projection.cc` 的 ms 區塊（`./build.sh` 已跑過）；proto 就是
-> §2 開頭那份 `proto/ms.proto`。
+> 來源：跑 `./build/unified_sender`，找 `=== sys2  GetRecipeSet` 區塊；code 在
+> `sender/unified_sender.cc` 的「sys2 RMS pattern 3」，斷言在 `test_projection.cc`
+> 的 sys2 real-shape 區塊；proto 就是 §2 開頭那段。
 
 ```cpp
-// sender in（proto/ms.proto；注意 getter 是小寫：set_recipeid）
-ms::v1::rqst_MS_GetRecipeSet req;
+// sender in（注意 getter 是小寫：set_recipeid）
+sys2::v1::rqst_RMS_GetRecipeSet req;
 req.set_eqpid("ETCH01");                              // 沒 tag → 只留在 body
 req.set_recipeid("RCP/V3");                           // 有 '/'，看 encoding
 for (const char* l : {"LOT01", "LOT02", "LOT03"}) req.add_lotinfo()->set_lotid(l);
 ```
 ```text
-# wire out（test_projection 斷言，全過）
+# wire out（實際 dump，ok=true）
 x-recipe-id:               RCP%2FV3          ← '/' 被 url-encode
 x-process-context-count:   3
+x-process-context-digest:  sha256:104c4199ef361c2bc1106ebb788bb3f36534ebbaa5369ccf47c26520b9975871
 x-process-context:         LotID=LOT01       ← 自家 message：只出有 tag 的 key
 x-process-context:         LotID=LOT02
 x-process-context:         LotID=LOT03
@@ -198,18 +199,18 @@ result: PASS (clean accepted, tampered rejected)
 ```
 中途有人動了 context header（或 header/body 漂移），digest 對不上 → receiver 拒收，不會靜默吃下去。
 
-## 3. 一步步加你自己的 management system（例：rms）
+## 3. 一步步加你自己的 management system（例：nrms）
 
 現在拿你的真實 proto 照做一次。以下用 NRMS 的 `rqst_NRMS_GetRecipeSet` 當例子，
-最後的成品長什麼樣，對照 `ms.proto` 就是了（它就是照這流程做出來的）。
+最後的成品長什麼樣，對照 sys2 的 `rqst_RMS_GetRecipeSet` 就是了（它就是照這流程做出來的）。
 每一步做錯 build 都會 fail loud 告訴你原因，不會靜默出錯的 header。
 
 ### 3.0 放進 build
 
 ```bash
-cp rms.proto example/proto/
-# build.sh 裡一行：SYSTEMS=(sys1 sys2 sys3 ms) → 加上 rms
-# CMake 同理：CMakeLists.txt 的 foreach(name sys1 sys2 sys3 ms) 加上 rms
+cp nrms.proto example/proto/
+# build.sh 裡一行：SYSTEMS=(sys1 sys2 sys3) → 加上 nrms
+# CMake 同理：CMakeLists.txt 的 foreach(name sys1 sys2 sys3) 加上 nrms
 ```
 
 ### 3.1 每個值先分類（tag 決策表)
@@ -250,7 +251,7 @@ message rqst_NRMS_GetRecipeSet {
 
 改動總計：1 個 import + 2 行 tag。欄位、編號、結構全部原樣。
 
-> 對照組就是 §2 跑過的 `ms.proto` ——它就是路線 A 的成品，照抄即可。camelCase
+> 對照組就是 §2 跑過的 `rqst_RMS_GetRecipeSet`——它就是路線 A 的成品，照抄即可。camelCase
 > 欄位名可直接用——生成碼會用 protobuf 的小寫 getter（`recipeId` → `recipeid()`）。
 
 **路線 B — 加共用 `repeated common.v1.ProcessContext contexts`（平台統一 schema）**
@@ -265,7 +266,7 @@ message rqst_NRMS_GetRecipeSet {
 ./build.sh
 ```
 
-過了就會有 `build/generated/rms.proj.h` / `.cc`：每個有 tag 的 message 一個
+過了就會有 `build/generated/nrms.proj.h` / `.cc`：每個有 tag 的 message 一個
 `routingmeta::ProjectMeta(const rqst_NRMS_GetRecipeSet&, MetadataSink&, bool emit_digest = true)`。
 
 tag 放錯 codegen 會**直接 fail 並說原因**（never silent）。常見訊息對照：
@@ -280,7 +281,7 @@ tag 放錯 codegen 會**直接 fail 並說原因**（never silent）。常見訊
 
 ### 3.4 驗證你的新系統
 
-最快的方法：抄 `tests/test_projection.cc` 的 ms 區塊，改成你的 message 名和期望值，
+最快的方法：抄 `tests/test_projection.cc` 的 sys2 real-shape 區塊，改成你的 message 名和期望值，
 `./build.sh` 會自動跑。或照 §2.1 案例的做法用 `VectorSink` dump 出 headers 逐行核對。
 
 ## 4. Sender owner 要寫的（共 2 行）
@@ -299,9 +300,9 @@ stub->GetRecipeSet(&ctx, req, &resp);
 ```cpp
 #include "common/common_headers.h"   // Runtime + FillCommon
 #include "common/metadata_sink.h"    // GrpcSink
-#include "rms.proj.h"                // 生成的 ProjectMeta（你在 §3 加的系統）
+#include "nrms.proj.h"               // 生成的 ProjectMeta（你在 §3 加的系統）
 
-Runtime rt{corr_id, site_id, tool_id, unique_req_id, "rms"};  // 你本來就有的值
+Runtime rt{corr_id, site_id, tool_id, unique_req_id, "nrms"};  // 你本來就有的值
 routingmeta::GrpcSink sink(&ctx);                             // [+meta] 1
 routingmeta::ProjResult r = Send(req, rt, sink);              // [+meta] 2 (= FillCommon + ProjectMeta)
 ```

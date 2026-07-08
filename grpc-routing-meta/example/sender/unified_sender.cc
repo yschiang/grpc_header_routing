@@ -108,6 +108,21 @@ int main() {
     dump("sys2  Download (recipe id + 3 lots in one FOUP)", sink, r);  // [demo]
   }
 
+  // --- sys2 RMS pattern 3  real fab proto shape — camelCase + own LotInfo ---
+  // Same two ids as pattern 2, but in an unmodified real-world message layout:
+  // pctx rides the system's OWN repeated lot message (only tagged keys are emitted),
+  // and protobuf's C++ getters are the lowercased field names (set_recipeid).
+  {
+    sys2::v1::rqst_RMS_GetRecipeSet req;                  // [app]
+    req.set_eqpid("ETCH01");                             // [app] untagged -> body only
+    req.set_recipeid("RCP/V3");                          // [app] -> x-recipe-id (url-encoded)
+    for (const char* lot : {"LOT01", "LOT02", "LOT03"})  // [app] the lots in the FOUP
+      req.add_lotinfo()->set_lotid(lot);                 // [app] -> x-process-context: LotID=...
+    routingmeta::VectorSink sink;                        // [+meta]
+    routingmeta::ProjResult r = Send(req, Runtime{"CORR-RMS-007", "F18", "ETCH01", "REQ-0007", "eap"}, sink);  // [+meta]
+    dump("sys2  GetRecipeSet (real shape: own LotInfo)", sink, r);   // [demo]
+  }
+
   // --- sys2  sys2.recipe.list — zero contexts (count=0) ---
   {
     sys2::v1::ListRequest req;                            // [app] (no contexts to send)

@@ -53,7 +53,7 @@ target_link_libraries(protoc-gen-meta PRIVATE ${PROTOC_LIB} ${Protobuf_LIBRARIES
 #    Add a new system by appending its stem to the foreach list.
 # ===========================================================================
 set(GEN_SRCS ${GEN_DIR}/metadata_options.pb.cc ${GEN_DIR}/process_context.pb.cc)
-foreach(name sys1 sys2 sys3 ms)
+foreach(name sys1 sys2 sys3)
   add_custom_command(
     OUTPUT ${GEN_DIR}/${name}.pb.cc ${GEN_DIR}/${name}.pb.h
            ${GEN_DIR}/${name}.proj.cc ${GEN_DIR}/${name}.proj.h

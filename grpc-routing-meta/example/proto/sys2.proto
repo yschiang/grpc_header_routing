@@ -1,11 +1,13 @@
 // sys2 system — Recipe Management. 5 transactions.
 //
-// RMS adoption pattern (the two shapes an RMS owner needs):
-//   Verify   — tool id (Runtime -> x-tool-id) + ONE recipe id: keep your recipe_id
-//              field where it is, add one (routing.project) tag -> x-recipe-id.
-//   Download — same, plus multiple lot ids in one FOUP: one ProcessContext per lot
-//              (sparse fill is fine; empty fields project as `Key=`).
-// sys2.recipe.list carries zero contexts (count=0). All three are exercised by the
+// RMS adoption pattern (the three shapes an RMS owner needs):
+//   Verify           — tool id (Runtime -> x-tool-id) + ONE recipe id: keep your
+//                      recipe_id field where it is, add one (routing.project) tag.
+//   Download         — same, plus multiple lot ids in one FOUP: one ProcessContext
+//                      per lot (sparse fill is fine; empty fields project as `Key=`).
+//   rqst_RMS_GetRecipeSet — the same two ids in a REAL fab proto shape (camelCase,
+//                      system's own repeated lot message; see below).
+// sys2.recipe.list carries zero contexts (count=0). All are exercised by the
 // unified sender demo and pinned by test_projection.
 syntax = "proto3";
 
@@ -21,6 +23,28 @@ message VerifyRequest {
 message DownloadRequest {
   repeated common.v1.ProcessContext contexts = 1;   // one per lot in the FOUP
   string recipe_id = 2 [(routing.project) = {key: "x-recipe-id", required: true}];
+}
+
+// Real-shape RMS transaction (TUTORIAL route A): camelCase/PascalCase field names
+// (pins the plugin's lowercase_name() getter handling — protoc's C++ getters are
+// lowercased, e.g. recipeId -> recipeid()) and (routing.pctx) on the system's OWN
+// repeated lot message instead of the shared ProcessContext. Total [+meta] delta
+// vs a plain fab proto: 2 tags. No rpc: the projection contract is per-message
+// (same precedent as sys3 BatchSubmitRequest, docs/adr/0003).
+message msgHeader { string txId = 1; }
+message Typ_RMSLotInfo {
+  string LotId = 1 [(routing.pctx) = {key:"LotID"}];
+  string carrierId = 2;
+}
+message rqst_RMS_GetRecipeSet {
+  msgHeader msgHdr = 1;
+  string eqpId = 2;                 // untagged: tool id rides Runtime -> x-tool-id
+  string recipeId = 3 [(routing.project) = {key:"x-recipe-id", required:true}];
+  int32 levelNo = 4;
+  string secsVersion = 5;
+  int32 LotInfoNo = 6;
+  repeated Typ_RMSLotInfo LotInfo = 7;
+  int32 isSingleOrMultiple = 8;
 }
 message QualifyRequest  { repeated common.v1.ProcessContext contexts = 1; }
 message UploadRequest   { repeated common.v1.ProcessContext contexts = 1; }

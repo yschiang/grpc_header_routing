@@ -35,7 +35,7 @@ PBFLAGS=(-I "$GEN" -I "$ROOT/src" $PB_CFLAGS $PB_LIBS)
 # Contract protos: --cpp_out only (no ProjectMeta). Add a new system by appending to
 # SYSTEMS; add a shared message by appending to CONTRACT.
 CONTRACT=(metadata_options process_context)
-SYSTEMS=(sys1 sys2 sys3 nrms)
+SYSTEMS=(sys1 sys2 sys3 ms)
 
 rm -rf "$BIN"
 mkdir -p "$GEN"

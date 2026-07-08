@@ -18,7 +18,7 @@
 #include "common/process_context_emit.h"
 #include "common/sha256.h"
 #include "common/url_encode.h"
-#include "nrms.proj.h"
+#include "ms.proj.h"
 #include "sys1.proj.h"
 #include "sys2.proj.h"
 #include "sys3.proj.h"
@@ -234,11 +234,11 @@ int main() {
     assert(routingmeta::VerifyDigest(cs, dg).ok);                  // receiver-side round-trip
   }
 
-  // --- nrms: real-world adoption fixture (TUTORIAL.zh.md route A). Pins two things
-  //     the sysN protos can't: camelCase fields -> lowercased C++ getters in the
-  //     generated code, and (routing.pctx) on the system's OWN lot message. ---
+  // --- ms: built-in management-system fixture (TUTORIAL.zh.md route A). Pins two
+  //     things the sysN protos can't: camelCase fields -> lowercased C++ getters in
+  //     the generated code, and (routing.pctx) on the system's OWN lot message. ---
   {
-    nrms::v1::rqst_NRMS_GetRecipeSet req;
+    ms::v1::rqst_MS_GetRecipeSet req;
     req.set_eqpid("ETCH01");                                       // untagged: body-only
     req.set_recipeid("RCP/V3");
     for (const char* l : {"LOT01", "LOT02", "LOT03"}) req.add_lotinfo()->set_lotid(l);
@@ -256,7 +256,7 @@ int main() {
     assert(routingmeta::VerifyDigest(cs, dg).ok);
     assert(routingmeta::ParseContext(cs[2])["LotID"] == "LOT03");
 
-    nrms::v1::rqst_NRMS_GetRecipeSet empty;                        // recipe missing
+    ms::v1::rqst_MS_GetRecipeSet empty;                            // recipe missing
     routingmeta::VectorSink s2;
     routingmeta::ProjResult r2 = ProjectMeta(empty, s2);
     assert(!r2.ok && s2.Get("x-routing-error") == "missing:x-recipe-id");

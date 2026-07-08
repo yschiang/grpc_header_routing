@@ -35,6 +35,9 @@ stub->Calculate(&ctx, req, &resp);                    // 你本來就要呼叫
 `ProjectMeta` 依 **request 型別**自動挑對應的 overload,所以 sys1 / sys2 / sys3 的 21 種
 transaction **全走同一條路、沒有任何 `if (system==…)`**。換系統、加 method,sender 一行都不用改。
 
+> 手把手的採用流程(帶回 local env、接真實 camelCase proto、toolchain 相容性、
+> 實跑 in/out 案例)見 [`TUTORIAL.zh.md`](TUTORIAL.zh.md);本文只講 why。
+
 ### 2.2 Provider —— 在既有 proto 上 annotate,搭原本的 protoc 流程
 
 不必另開工具、不必手寫抽取邏輯。原本 grpc 就在跑 `protoc --cpp_out`;我們**只多掛一個
@@ -64,8 +67,9 @@ transaction **全走同一條路、沒有任何 `if (system==…)`**。換系統
 ```
 
 Provider 要做的就三件事:`import` 兩支共用合約 → 加一個 `repeated ProcessContext
-contexts` →(若有 domain 專屬值)在欄位上貼一個 `(routing.project)` 標籤。合約是共用的,
-所以三系統的 schema 不會分歧:
+contexts` →(若有 domain 專屬值)在欄位上貼一個 `(routing.project)` 標籤。(既有 proto
+已有自己的 repeated lot message 時,也可直接在其欄位上貼 `(routing.pctx)`,一個新欄位
+都不加 —— 兩條路線的取捨見 TUTORIAL §3.2。)合約是共用的,所以三系統的 schema 不會分歧:
 
 ```
 metadata_options.proto   標籤定義     ┐ shared

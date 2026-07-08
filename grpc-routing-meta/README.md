@@ -5,11 +5,15 @@ can route / preprocess without parsing the body — and so the headers can never
 drift from it (the body is the single source of truth). A `protoc` plugin generates
 the projection; one **unified sender** serves every system.
 
-- **中文總覽:** [`OVERVIEW.zh.md`](OVERVIEW.zh.md) — 目的、用法、metadata 範例、error control。
+- **採用教學（怎麼接上你的系統）:** [`TUTORIAL.zh.md`](TUTORIAL.zh.md) — 帶回 local env、
+  跑懂 sys2 RMS、一步步接真實 proto，含舊 toolchain 相容性。**RMS / sender owner 從這裡進。**
+- **中文設計總覽（為什麼這樣設計）:** [`OVERVIEW.zh.md`](OVERVIEW.zh.md) — 目的、
+  hardcode vs autogen 比較、error control。
 - **Wire contract:** [`SPEC.md`](SPEC.md) — the normative byte-level header spec.
 - **Design contract:** [`CONTEXT.md`](CONTEXT.md) — one page of glossary + testable
   invariants (read this before writing tests or reviewing code).
-- **End-to-end walkthrough:** [`DEMO.md`](DEMO.md) — copy-paste session, clean build to every behavior.
+- **End-to-end walkthrough（證明每個行為）:** [`DEMO.md`](DEMO.md) — copy-paste session
+  mapped to the BRIEF A–I acceptance criteria. **Reviewer / 驗收者從這裡進。**
 - **Runnable kit:** [`example/`](example/).
 
 ## Three systems, one sender
@@ -17,7 +21,7 @@ the projection; one **unified sender** serves every system.
 | System | proto | methods | Projects |
 |---|---|---:|---|
 | **sys1** | `example/proto/sys1.proto` | 1 | process-context, batch (N contexts) |
-| **sys2** | `example/proto/sys2.proto` | 5 | process-context, often sparse / `count=0` |
+| **sys2** | `example/proto/sys2.proto` | 5 | the RMS: `x-recipe-id` scalar + per-lot contexts (shared **and** own-message pctx, incl. real-shape camelCase `rqst_RMS_GetRecipeSet`) |
 | **sys3** | `example/proto/sys3.proto` | 10 | domain scalar `x-mask-id` (nested paths) + process-context |
 
 All three import the shared `example/proto/process_context.proto`, so the 7-field
@@ -35,7 +39,8 @@ routingmeta::ProjResult Send(const Req& req, const Runtime& rt, MetadataSink& si
 ```
 
 `ProjectMeta` is generated per request type by `example/src/plugin/protoc-gen-meta.cc`.
-Adding a 4th system (or a 16th method) = one proto + one line in the build list.
+Adding a 4th system (or a 16th method) = one proto + one line each in
+`build.sh` (`SYSTEMS`) and `CMakeLists.txt` (`foreach`) — walkthrough in TUTORIAL §3.
 
 **Wiring contract.** Call `FillCommon(rt, sink)` then `ProjectMeta(req, sink)` on the
 *same* sink; read the returned `ProjResult` and decide abort/proceed yourself. Those two
@@ -63,8 +68,8 @@ body. Opaque transport failure → explicit, in-band signal.
 
 `ProjectMeta` returns `ProjResult{ok, issues[], duration}` and never throws on a
 data condition (a Sender's `Send` wrapper just forwards it). A missing **required** scalar
-(sys3 `x-mask-id`) sets `ok=false`, records a `MissingRequired` issue, and emits
-`x-routing-error: missing:x-mask-id` (the empty header is not sent). Overflow is a
+(sys2 `x-recipe-id`, sys3 `x-mask-id`) sets `ok=false`, records a `MissingRequired` issue,
+and emits `x-routing-error: missing:x-recipe-id` (the empty header is not sent). Overflow is a
 non-blocking issue (`ok` stays true). The caller inspects `issues` and decides; the kit
 logs nothing — the lib populates + reports, the Sender orchestrates.
 
@@ -97,10 +102,11 @@ on Protobuf 3.20.3 and 3.21.12.
 
 ```
 README.md          this overview
+TUTORIAL.zh.md     採用教學：跑懂 sys2 → 接你自己的 proto → build → test
 SPEC.md            normative wire contract (byte-level header spec)
 CONTEXT.md         design summary + testable invariants
-OVERVIEW.zh.md     中文設計總覽
-DEMO.md            end-to-end runnable walkthrough
+OVERVIEW.zh.md     中文設計總覽（why：比較、代價、效益）
+DEMO.md            end-to-end runnable walkthrough (BRIEF A–I acceptance evidence)
 example/
   proto/           metadata_options, process_context, sys1, sys2, sys3
   src/plugin/      protoc-gen-meta.cc        (codegen)

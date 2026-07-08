@@ -59,18 +59,23 @@ block prints its metadata plus `(bytes, ok, duration)`.
 emitted; `count` matches the body's `repeated` size (inv. 4,5,6 — exact
 projection, **D**). Per-call `duration` (**H**).
 
-### 1b. sys2 — sparse + count=0
+### 1b. sys2 — the RMS: scalar + sparse contexts + count=0
 
 ```
-=== sys2  Verify (1 sparse context) ===
-  x-process-context:  ChamberId=&LotID=&...&RecipeID=RCP_ETCH_V3&...   # empty fields kept as Key=
+=== sys2  Download (recipe id + 3 lots in one FOUP) ===
+  x-recipe-id:         RCP_ETCH_V3                                     # (routing.project) scalar
+  x-process-context:   ChamberId=&LotID=LOT01&...&RecipeID=&...        # empty fields kept as Key=
+  ...LOT02 / LOT03 lines, count=3, digest...
 
 === sys2  List (count=0) ===
   x-process-context-count:   0                                        # count + format only, no digest/lines
 ```
 
-**Proves:** empty body fields project as present-but-empty `Key=`, not dropped
-(inv. 1, body-authoritative); `count=0` emits structure only (inv. 7).
+**Proves:** scalar projection and process-context compose in one message; empty
+body fields project as present-but-empty `Key=`, not dropped (inv. 1,
+body-authoritative); `count=0` emits structure only (inv. 7). Four sys2 patterns
+total (incl. empty-required error and the real-shape camelCase
+`rqst_RMS_GetRecipeSet`) — full in/out walkthrough in `TUTORIAL.zh.md` §2.1.
 
 ### 1c. sys3 — domain scalar, and the no-silent-failure path
 

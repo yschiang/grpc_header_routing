@@ -18,6 +18,7 @@
 #include "common/process_context_emit.h"
 #include "common/sha256.h"
 #include "common/url_encode.h"
+#include "nrms.proj.h"
 #include "sys1.proj.h"
 #include "sys2.proj.h"
 #include "sys3.proj.h"
@@ -231,6 +232,34 @@ int main() {
     }
     assert(cs[2].find("LotID=LOT03") != std::string::npos);        // body order kept
     assert(routingmeta::VerifyDigest(cs, dg).ok);                  // receiver-side round-trip
+  }
+
+  // --- nrms: real-world adoption fixture (ADOPTION.zh.md route A). Pins two things
+  //     the sysN protos can't: camelCase fields -> lowercased C++ getters in the
+  //     generated code, and (routing.pctx) on the system's OWN lot message. ---
+  {
+    nrms::v1::rqst_NRMS_GetRecipeSet req;
+    req.set_eqpid("ETCH01");                                       // untagged: body-only
+    req.set_recipeid("RCP/V3");
+    for (const char* l : {"LOT01", "LOT02", "LOT03"}) req.add_lotinfo()->set_lotid(l);
+    routingmeta::VectorSink sink;
+    routingmeta::ProjResult r = ProjectMeta(req, sink);
+    assert(r.ok && r.issues.empty());
+    assert(sink.Get("x-recipe-id") == "RCP%2FV3");
+    assert(sink.Count("x-process-context") == 3);
+    assert(sink.Get("x-process-context") == "LotID=LOT01");        // own-message pctx: tagged keys only
+    std::vector<std::string> cs; std::string dg;
+    for (auto& kv : sink.items) {
+      if (kv.first == "x-process-context") cs.push_back(kv.second);
+      else if (kv.first == "x-process-context-digest") dg = kv.second;
+    }
+    assert(routingmeta::VerifyDigest(cs, dg).ok);
+    assert(routingmeta::ParseContext(cs[2])["LotID"] == "LOT03");
+
+    nrms::v1::rqst_NRMS_GetRecipeSet empty;                        // recipe missing
+    routingmeta::VectorSink s2;
+    routingmeta::ProjResult r2 = ProjectMeta(empty, s2);
+    assert(!r2.ok && s2.Get("x-routing-error") == "missing:x-recipe-id");
   }
 
   // --- uniform_across_repeated: N jobs duplicate ONE mask id; project element[0],

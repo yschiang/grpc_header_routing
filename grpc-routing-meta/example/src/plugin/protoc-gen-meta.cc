@@ -49,11 +49,13 @@ void walkProj(const Descriptor* d, const std::string& prefix, std::vector<Proj>*
   for (int i = 0; i < d->field_count(); ++i) {
     const FieldDescriptor* f = d->field(i);
     if (f->is_repeated()) continue;
+    // Getters use lowercase_name(): the C++ generator lowercases field names
+    // (camelCase fab protos: `recipeId` -> req.recipeid()), f->name() would not compile.
     if (f->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
-      walkProj(f->message_type(), prefix + f->name() + "().", out, onpath);
+      walkProj(f->message_type(), prefix + f->lowercase_name() + "().", out, onpath);
     } else if (f->options().HasExtension(routing::project)) {
       const auto& pj = f->options().GetExtension(routing::project);
-      out->push_back({pj.key(), pj.required(), prefix + f->name() + "()"});
+      out->push_back({pj.key(), pj.required(), prefix + f->lowercase_name() + "()"});
     }
   }
   onpath->erase(d);
@@ -79,7 +81,7 @@ void walkUniform(const Descriptor* d, const std::string& prefix, std::vector<UPr
     const FieldDescriptor* f = d->field(i);
     if (f->cpp_type() != FieldDescriptor::CPPTYPE_MESSAGE) continue;
     if (!f->is_repeated()) {
-      walkUniform(f->message_type(), prefix + f->name() + "().", out, onpath);
+      walkUniform(f->message_type(), prefix + f->lowercase_name() + "().", out, onpath);
       continue;
     }
     const Descriptor* m = f->message_type();
@@ -88,7 +90,7 @@ void walkUniform(const Descriptor* d, const std::string& prefix, std::vector<UPr
       if (!sf->options().HasExtension(routing::project)) continue;
       const auto& pj = sf->options().GetExtension(routing::project);
       if (pj.uniform_across_repeated())
-        out->push_back({pj.key(), pj.required(), prefix + f->name() + "()", sf->name() + "()"});
+        out->push_back({pj.key(), pj.required(), prefix + f->lowercase_name() + "()", sf->lowercase_name() + "()"});
     }
   }
   onpath->erase(d);
@@ -421,11 +423,11 @@ class ProjGen : public CodeGenerator {
           for (int k = 0; k < cm->field_count(); ++k) {
             const FieldDescriptor* sf = cm->field(k);
             if (!sf->options().HasExtension(routing::pctx)) continue;
-            cf.push_back({sf->options().GetExtension(routing::pctx).key(), sf->name() + "()"});
+            cf.push_back({sf->options().GetExtension(routing::pctx).key(), sf->lowercase_name() + "()"});
           }
           std::sort(cf.begin(), cf.end());
           p.Print("  {\n    std::vector<std::string> ctxs;\n    for (const auto& e : req.$r$()) {\n      std::string s;\n",
-                  "r", ctxf->name());
+                  "r", ctxf->lowercase_name());
           for (size_t j = 0; j < cf.size(); ++j) {
             const std::string sep = (j == 0) ? "" : "&";
             p.Print("      s += \"$sep$$k$=\"; s += UrlEncode(e.$g$);\n",

@@ -68,6 +68,12 @@ data condition (a Sender's `Send` wrapper just forwards it). A missing **require
 non-blocking issue (`ok` stays true). The caller inspects `issues` and decides; the kit
 logs nothing — the lib populates + reports, the Sender orchestrates.
 
+For a batch whose elements all repeat the **same** scalar (e.g. N jobs, one mask id),
+tag the field `uniform_across_repeated: true`: codegen projects element[0] and verifies
+every element agrees — divergence is a blocking `Inconsistent` issue +
+`x-routing-error: inconsistent:x-mask-id`, never a silent first-pick (SPEC §4.1,
+[`docs/adr/0003`](docs/adr/0003-uniform-across-repeated-projection.md)).
+
 ## Build & run
 
 ```sh

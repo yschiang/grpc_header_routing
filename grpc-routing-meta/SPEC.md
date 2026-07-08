@@ -34,8 +34,8 @@ is a projection, it cannot drift from the body (and §5.3 lets a verifier prove 
 | `x-process-context-digest` | pctx | `sha256:` + 64 hex (§5.3) | iff count>0, not overflow, and the sender requested it (`emit_digest`, default yes) |
 | `x-process-context` | pctx | one canonical context (§5.1), repeated | iff count>0 and not overflow |
 | `x-process-context-overflow` | pctx | `true` | iff overflow (§5.4) |
-| `x-mask-id` | scalar | URL-encoded body scalar | sys3 only, iff source non-empty |
-| `x-routing-error` | error | `missing:<key>` (**PROVISIONAL** §7) | iff a required scalar was empty |
+| `x-mask-id` | scalar | URL-encoded body scalar | sys3 only, iff source non-empty (and, for a uniform projection, consistent — §4.1) |
+| `x-routing-error` | error | `missing:<key>` \| `inconsistent:<key>` (**PROVISIONAL** §7) | iff a required scalar was empty, or a uniform projection diverged |
 
 The sender MUST NOT emit `x-target-system`, `x-transaction-type`, `x-route-profile`, or
 `x-routing-grain`: the first two are carried by the gRPC method `:path`; the latter two are
@@ -54,6 +54,25 @@ A `(routing.project)`-tagged body scalar, reached by a nested-field walk. If the
 field is **non-empty**, the sender MUST emit `x-mask-id` = `UrlEncode(value)` (§6). If it is
 **empty** and the projection is `required`, see §7 (the sender MUST NOT throw and MUST NOT
 emit an empty `x-mask-id`).
+
+### 4.1 Verified-uniform projection (`uniform_across_repeated`)
+
+A string scalar that is a **direct** field of exactly **one** repeated message MAY be
+tagged `uniform_across_repeated: true` — the contract's promise that every element
+carries the **same** value (a body invariant the schema cannot express, e.g. N batch
+jobs all repeating one mask id). The sender then:
+
+- MUST project **element[0]**'s value (rules of §4 apply: URL-encoded, empty +
+  `required` → §7 `missing:<key>`); an **empty repeated field** with `required` is
+  likewise `missing:<key>`.
+- MUST verify **all elements agree**. On divergence the sender MUST NOT emit the
+  scalar header and MUST report it as a **blocking** `Inconsistent` issue
+  (`ok = false`) with `x-routing-error: inconsistent:<key>` — routing a batch on
+  element[0] while the rest disagree would misroute them. Divergence with values
+  present is `inconsistent`, not `missing`, regardless of `required`.
+
+Without this flag, `(routing.project)` under a repeated field remains a codegen
+error (§9). See ADR 0003.
 
 ## 5. Process-context projection (Layer 3)
 
@@ -137,14 +156,20 @@ data condition. A missing **required** scalar (today: `x-mask-id`, sys3) MUST:
 2. emit `x-routing-error: missing:<key>`, and
 3. **not** emit the empty scalar header.
 
+A **diverging uniform projection** (§4.1) MUST likewise:
+
+1. record an `Inconsistent` issue in the returned `ProjResult` (`ok = false`), and
+2. emit `x-routing-error: inconsistent:<key>`, and
+3. **not** emit the scalar header.
+
 The caller inspects `ok`, feeds `issues` to its own metrics/logs, and chooses to abort the
 RPC or proceed. The kit performs no logging or metrics itself. Overflow (§5.4) is likewise
 reported as a **non-blocking** `Overflow` issue (`ok` stays `true`).
 
 > **PROVISIONAL** (pending cross-team ratification, Sender dept ↔ gateway — see §10): the
-> `x-routing-error` header **name** and **value format**, the default caller policy
-> (abort vs proceed), and whether APISIX consumes `x-routing-error` (dead-letter / default
-> route) or the caller aborts before send.
+> `x-routing-error` header **name** and **value format** (both `missing:<key>` and
+> `inconsistent:<key>`), the default caller policy (abort vs proceed), and whether APISIX
+> consumes `x-routing-error` (dead-letter / default route) or the caller aborts before send.
 
 ## 8. Versioning
 
@@ -156,8 +181,12 @@ rule above MUST bump the version. The verifier MUST reject an unknown contract v
 
 The contract is enforced at codegen, not just at runtime (fail loud, never silent). The
 `protoc-gen-meta` plugin MUST reject — with a non-zero exit — any `(routing.project)` that is
-not on a **non-repeated scalar leaf** (repeated, message-typed, or reached under a repeated
-field), and any duplicate projected key. See `example/tests/negative/`.
+not on a **non-repeated string scalar leaf** (repeated, message-typed, non-string, or reached
+under a repeated field without `uniform_across_repeated` — §4.1), any duplicate projected key
+(plain and uniform keys share one namespace), any `(routing.pctx)` on a non-string field, more
+than one repeated process-context field per message, and any `uniform_across_repeated` that is
+not a direct field of exactly one repeated message (no repeated ancestor, or a second repeated
+level). See `example/tests/negative/`.
 
 ## 10. Open / provisional (cross-team)
 

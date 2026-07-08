@@ -27,6 +27,21 @@ message Submit08Request { message Ctx { string mask_ref = 1 [(routing.project)={
 message Submit09Request { string maskid = 1 [(routing.project)={key:"x-mask-id", required:true}]; repeated common.v1.ProcessContext contexts = 2; }                                                                // top-level
 message Submit10Request { message Mask { string id = 1 [(routing.project)={key:"x-mask-id", required:true}]; } message Exposure { Mask mask = 1; } Exposure exposure = 1; repeated common.v1.ProcessContext contexts = 2; } // nested 2
 
+// Batch shape: N jobs, each repeating the SAME mask id — a real-fleet convention
+// the schema itself cannot express. uniform_across_repeated makes codegen project
+// element[0] and hard-verify the rest agree (divergence -> blocking Inconsistent
+// issue + x-routing-error, no header). No rpc: the projection is per-message and
+// the demo service surface (16 tx) is unchanged; see docs/adr/0003.
+message BatchSubmitRequest {
+  message Job {
+    string mask_id = 1 [(routing.project) = {
+      key: "x-mask-id", required: true, uniform_across_repeated: true
+    }];
+  }
+  repeated Job jobs = 1;
+  repeated common.v1.ProcessContext contexts = 2;
+}
+
 service Sys3Service {
   rpc Submit01(Submit01Request) returns (common.v1.Ack);
   rpc Submit02(Submit02Request) returns (common.v1.Ack);

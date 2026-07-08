@@ -51,7 +51,9 @@ static void dump(const char* title, const routingmeta::VectorSink& s,
     std::printf("  %-26s %s\n", (kv.first + ":").c_str(), kv.second.c_str());
   for (const auto& is : r.issues)
     std::printf("  [issue] %s%s\n",
-                is.kind == routingmeta::Issue::MissingRequired ? "missing-required " : "overflow ",
+                is.kind == routingmeta::Issue::MissingRequired ? "missing-required "
+                : is.kind == routingmeta::Issue::Overflow      ? "overflow "
+                                                               : "inconsistent ",
                 is.key.c_str());
   std::printf("\n");
 }

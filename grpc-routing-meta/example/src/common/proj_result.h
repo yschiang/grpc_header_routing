@@ -9,12 +9,12 @@
 namespace routingmeta {
 
 struct Issue {
-  enum Kind { MissingRequired, Overflow } kind = MissingRequired;
-  std::string key;   // header key for MissingRequired (e.g. "x-mask-id"); empty for Overflow
+  enum Kind { MissingRequired, Overflow, Inconsistent } kind = MissingRequired;
+  std::string key;   // header key for MissingRequired/Inconsistent (e.g. "x-mask-id"); empty for Overflow
 };
 
 struct ProjResult {
-  bool ok = true;                       // false iff a blocking issue (MissingRequired)
+  bool ok = true;                       // false iff a blocking issue (MissingRequired, Inconsistent)
   std::vector<Issue> issues;            // non-blocking issues (Overflow) keep ok = true
   std::chrono::nanoseconds duration{};  // wall time of the projection (criterion H)
 };

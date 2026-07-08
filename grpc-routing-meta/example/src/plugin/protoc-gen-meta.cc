@@ -64,6 +64,41 @@ inline void walkProj(const Descriptor* d, const std::string& prefix, std::vector
   walkProj(d, prefix, out, &onpath);
 }
 
+// A uniform_across_repeated projection: `rep` is the getter path to the ONE
+// repeated message (e.g. "jobs()"), `leaf` the direct scalar inside each element
+// (e.g. "mask_id()"). Generated code projects element[0] and verifies all agree.
+struct UProj { std::string key{}; bool required = false; std::string rep{}, leaf{}; };
+
+// Collect uniform projections: descend non-repeated messages exactly like walkProj;
+// at each repeated message field, collect its DIRECT flagged string scalars
+// (CheckRepeatedSubtree has already rejected anything deeper). Cycle-guarded.
+void walkUniform(const Descriptor* d, const std::string& prefix, std::vector<UProj>* out,
+                 std::set<const Descriptor*>* onpath) {
+  if (!onpath->insert(d).second) return;
+  for (int i = 0; i < d->field_count(); ++i) {
+    const FieldDescriptor* f = d->field(i);
+    if (f->cpp_type() != FieldDescriptor::CPPTYPE_MESSAGE) continue;
+    if (!f->is_repeated()) {
+      walkUniform(f->message_type(), prefix + f->name() + "().", out, onpath);
+      continue;
+    }
+    const Descriptor* m = f->message_type();
+    for (int k = 0; k < m->field_count(); ++k) {
+      const FieldDescriptor* sf = m->field(k);
+      if (!sf->options().HasExtension(routing::project)) continue;
+      const auto& pj = sf->options().GetExtension(routing::project);
+      if (pj.uniform_across_repeated())
+        out->push_back({pj.key(), pj.required(), prefix + f->name() + "()", sf->name() + "()"});
+    }
+  }
+  onpath->erase(d);
+}
+
+inline void walkUniform(const Descriptor* d, std::vector<UProj>* out) {
+  std::set<const Descriptor*> onpath;
+  walkUniform(d, "", out, &onpath);
+}
+
 const FieldDescriptor* FindCtx(const Descriptor* d) {
   for (int j = 0; j < d->field_count(); ++j) {
     const FieldDescriptor* f = d->field(j);
@@ -90,6 +125,69 @@ bool AnyProject(const Descriptor* d, std::set<const Descriptor*>* onpath) {
   return found;
 }
 
+inline bool IsUniform(const FieldDescriptor* f) {
+  return f->options().HasExtension(routing::project) &&
+         f->options().GetExtension(routing::project).uniform_across_repeated();
+}
+
+// Like AnyProject but only counts tags with uniform_across_repeated set.
+bool AnyUniform(const Descriptor* d, std::set<const Descriptor*>* onpath) {
+  if (!onpath->insert(d).second) return false;
+  bool found = false;
+  for (int i = 0; i < d->field_count() && !found; ++i) {
+    const FieldDescriptor* f = d->field(i);
+    found = (f->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE)
+              ? AnyUniform(f->message_type(), onpath)
+              : IsUniform(f);
+  }
+  onpath->erase(d);
+  return found;
+}
+
+// Inside ONE repeated message (field `f` of `parent`): a DIRECT string-scalar
+// field may carry uniform_across_repeated (verified-uniform projection, see
+// walkUniform). Anything else tagged (routing.project) here — unflagged, wrong
+// type, or flagged deeper (another message hop / second repeated level, where
+// uniformity across a cross-product is undefined) — is rejected loudly.
+bool CheckRepeatedSubtree(const Descriptor* m, const Descriptor* parent,
+                          const FieldDescriptor* f, std::string* err) {
+  for (int k = 0; k < m->field_count(); ++k) {
+    const FieldDescriptor* sf = m->field(k);
+    if (IsUniform(sf)) {
+      if (sf->is_repeated() || sf->cpp_type() != FieldDescriptor::CPPTYPE_STRING) {
+        *err = "(routing.project) on field \"" + sf->name() + "\" in message " +
+               m->name() + " must be a string scalar";
+        return false;
+      }
+      continue;  // valid uniform projection — collected by walkUniform
+    }
+    if (sf->options().HasExtension(routing::project)) {
+      *err = "(routing.project) is set under repeated field \"" + f->name() +
+             "\" in message " + parent->name() +
+             " — a repeated value cannot project to a single-valued header"
+             " (set uniform_across_repeated if the value is duplicated identically)";
+      return false;
+    }
+    if (sf->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
+      { std::set<const Descriptor*> seen;
+        if (AnyUniform(sf->message_type(), &seen)) {
+          *err = "uniform_across_repeated below field \"" + sf->name() +
+                 "\" in message " + m->name() +
+                 " — the flag must be on a direct field of exactly one repeated message";
+          return false;
+        } }
+      std::set<const Descriptor*> seen;
+      if (AnyProject(sf->message_type(), &seen)) {
+        *err = "(routing.project) is set under repeated field \"" + f->name() +
+               "\" in message " + parent->name() +
+               " — a repeated value cannot project to a single-valued header";
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 // Reject (routing.project) reachable under a repeated field: a single-valued header
 // cannot represent N values, and walkProj silently skips repeated subtrees — so
 // without this check the tag would vanish with no diagnostic. Cycle-guarded.
@@ -101,13 +199,7 @@ bool NoProjectUnderRepeated(const Descriptor* d, std::set<const Descriptor*>* on
     const FieldDescriptor* f = d->field(i);
     if (f->cpp_type() != FieldDescriptor::CPPTYPE_MESSAGE) continue;
     if (f->is_repeated()) {
-      std::set<const Descriptor*> seen;
-      if (AnyProject(f->message_type(), &seen)) {
-        *err = "(routing.project) is set under repeated field \"" + f->name() +
-               "\" in message " + d->name() +
-               " — a repeated value cannot project to a single-valued header";
-        ok = false;
-      }
+      ok = CheckRepeatedSubtree(f->message_type(), d, f, err);
     } else {
       ok = NoProjectUnderRepeated(f->message_type(), onpath, err);
     }
@@ -127,7 +219,15 @@ bool ProjectOnlyOnScalarLeaf(const Descriptor* d, std::set<const Descriptor*>* o
   for (int i = 0; i < d->field_count() && ok; ++i) {
     const FieldDescriptor* f = d->field(i);
     const bool is_msg = f->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE;
-    if (f->options().HasExtension(routing::project) && (f->is_repeated() || is_msg)) {
+    if (IsUniform(f)) {
+      // This walk only ever descends NON-repeated paths from the request root, so a
+      // flag seen here promises uniformity across a repeated ancestor that doesn't
+      // exist — a dead annotation that would silently mean nothing.
+      *err = "uniform_across_repeated on field \"" + f->name() + "\" in message " +
+             d->name() + " has no repeated ancestor — the flag only applies to a "
+             "direct field of a repeated message";
+      ok = false;
+    } else if (f->options().HasExtension(routing::project) && (f->is_repeated() || is_msg)) {
       *err = "(routing.project) on field \"" + f->name() + "\" in message " + d->name() +
              " must be a non-repeated scalar — a " +
              std::string(f->is_repeated() ? "repeated" : "message") +
@@ -186,10 +286,17 @@ bool Validate(const Descriptor* d, std::string* err) {
   { std::set<const Descriptor*> onpath;
     if (!ProjectOnlyOnScalarLeaf(d, &onpath, err)) return false; }
   std::vector<Proj> projs; walkProj(d, "", &projs);
+  std::vector<UProj> uprojs; walkUniform(d, &uprojs);
   std::set<std::string> keys;
   for (const auto& pj : projs)
     if (!keys.insert(pj.key).second) {
       *err = "duplicate (routing.project) key \"" + pj.key + "\" in message " +
+             d->name() + " — a single-valued header would be emitted twice";
+      return false;
+    }
+  for (const auto& u : uprojs)   // uniform keys share the same single-header namespace
+    if (!keys.insert(u.key).second) {
+      *err = "duplicate (routing.project) key \"" + u.key + "\" in message " +
              d->name() + " — a single-valued header would be emitted twice";
       return false;
     }
@@ -223,7 +330,8 @@ class ProjGen : public CodeGenerator {
       for (int i = 0; i < file->message_type_count(); ++i) {
         const Descriptor* d = file->message_type(i);
         std::vector<Proj> projs; walkProj(d, "", &projs);
-        if (projs.empty() && !FindCtx(d)) continue;
+        std::vector<UProj> uprojs; walkUniform(d, &uprojs);
+        if (projs.empty() && uprojs.empty() && !FindCtx(d)) continue;
         p.Print("ProjResult ProjectMeta(const $ns$::$m$& req, MetadataSink& sink, bool emit_digest = true);\n",
                 "ns", ns, "m", d->name());
       }
@@ -246,8 +354,9 @@ class ProjGen : public CodeGenerator {
       for (int i = 0; i < file->message_type_count(); ++i) {
         const Descriptor* d = file->message_type(i);
         std::vector<Proj> projs; walkProj(d, "", &projs);
+        std::vector<UProj> uprojs; walkUniform(d, &uprojs);
         const FieldDescriptor* ctxf = FindCtx(d);
-        if (projs.empty() && !ctxf) continue;
+        if (projs.empty() && uprojs.empty() && !ctxf) continue;
 
         p.Print("ProjResult ProjectMeta(const $ns$::$m$& req, MetadataSink& sink, bool emit_digest) {\n"
                 "  ProjResult _r;\n"
@@ -269,6 +378,40 @@ class ProjGen : public CodeGenerator {
           } else {
             p.Print("  if (!$v$.empty()) sink.Add(\"$k$\", UrlEncode($v$));\n",
                     "v", v, "k", pj.key);
+          }
+        }
+
+        for (const auto& u : uprojs) {
+          // Project element[0]; verify every element agrees (the annotation is the
+          // sender's promise of a body invariant the schema can't express). Divergence
+          // is a BLOCKING Inconsistent issue — routing a batch on job[0]'s value while
+          // the rest disagree would misroute them, so no header is emitted.
+          p.Print("  {\n"
+                  "    bool _first = true, _consistent = true;\n"
+                  "    std::string _val;\n"
+                  "    for (const auto& e : req.$rep$) {\n"
+                  "      if (_first) { _val = e.$leaf$; _first = false; }\n"
+                  "      else if (e.$leaf$ != _val) _consistent = false;\n"
+                  "    }\n"
+                  "    if (!_consistent) {\n"
+                  "      _r.ok = false;\n"
+                  "      _r.issues.push_back({Issue::Inconsistent, \"$k$\"});\n"
+                  "      sink.Add(\"x-routing-error\", \"inconsistent:$k$\");\n",
+                  "rep", u.rep, "leaf", u.leaf, "k", u.key);
+          if (u.required) {
+            p.Print("    } else if (_val.empty()) {\n"
+                    "      _r.ok = false;\n"
+                    "      _r.issues.push_back({Issue::MissingRequired, \"$k$\"});\n"
+                    "      sink.Add(\"x-routing-error\", \"missing:$k$\");\n"
+                    "    } else {\n"
+                    "      sink.Add(\"$k$\", UrlEncode(_val));\n"
+                    "    }\n  }\n",
+                    "k", u.key);
+          } else {
+            p.Print("    } else if (!_val.empty()) {\n"
+                    "      sink.Add(\"$k$\", UrlEncode(_val));\n"
+                    "    }\n  }\n",
+                    "k", u.key);
           }
         }
 

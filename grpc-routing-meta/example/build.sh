@@ -72,6 +72,8 @@ for f in tests/negative/*.proto; do
     bad_project_wrong_type.proto)     want='must be a string scalar' ;;
     bad_pctx_wrong_type.proto)        want='(routing.pctx) on field' ;;
     bad_multiple_ctx_fields.proto)    want='more than one repeated process-context' ;;
+    bad_uniform_not_repeated.proto)   want='has no repeated ancestor' ;;
+    bad_uniform_nested_repeated.proto) want='direct field of exactly one repeated message' ;;
     *)                                want='' ;;
   esac
   err="$("$PROTOC" "${IPROTO[@]}" -I tests/negative \

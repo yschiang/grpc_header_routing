@@ -1,0 +1,22 @@
+// NEGATIVE fixture — codegen MUST reject this (see build.sh "[neg ]").
+// uniform_across_repeated below a SECOND repeated level: uniformity across a
+// cross-product is undefined — the flag only supports a direct field of exactly
+// one repeated message. Validate must fail loud.
+// (Element types are nested on purpose: a TOP-LEVEL message with a flagged field
+// is itself rejected as "no repeated ancestor", since every top-level message is
+// a potential request root — see bad_uniform_not_repeated.proto.)
+syntax = "proto3";
+package neg.v1;
+import "metadata_options.proto";
+
+message BadUniformNestedRepeated {
+  message UniformLeaf {
+    string mask_id = 1 [(routing.project) = {
+      key: "x-mask-id", uniform_across_repeated: true
+    }];
+  }
+  message MidLevel {
+    repeated UniformLeaf leaves = 1;
+  }
+  repeated MidLevel mids = 1;
+}

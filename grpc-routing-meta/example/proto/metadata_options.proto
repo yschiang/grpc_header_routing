@@ -9,6 +9,12 @@ import "google/protobuf/descriptor.proto";
 message ProjectField {
   string key = 1;        // header key, e.g. "x-mask-id"
   bool required = 2;
+  // Opt-in for a scalar that is a DIRECT field of exactly one repeated message and
+  // is duplicated identically across every element (a body invariant the schema
+  // cannot express, e.g. N batch jobs all carrying the same mask id). Codegen
+  // projects element[0] and verifies all elements agree; divergence is a blocking
+  // Inconsistent issue + x-routing-error — never a silent first-pick.
+  bool uniform_across_repeated = 3;
 }
 
 // Mark a field inside the repeated process-context message.

@@ -186,6 +186,41 @@ int main() {
     assert(s2.Get("x-mask-id").empty());                           // empty header NOT emitted
   }
 
+  // --- uniform_across_repeated: N jobs duplicate ONE mask id; project element[0],
+  //     hard-verify the rest agree (divergence -> blocking Inconsistent, no header) ---
+  {
+    sys3::v1::BatchSubmitRequest req;                              // 3 jobs, same mask
+    req.add_jobs()->set_mask_id("RET-7");
+    req.add_jobs()->set_mask_id("RET-7");
+    req.add_jobs()->set_mask_id("RET-7");
+    routingmeta::VectorSink sink;
+    routingmeta::ProjResult r = ProjectMeta(req, sink);
+    assert(r.ok);
+    assert(r.issues.empty());
+    assert(sink.Get("x-mask-id") == "RET-7");                      // projected once
+    assert(sink.Count("x-mask-id") == 1);
+    assert(sink.Get("x-routing-error").empty());
+
+    sys3::v1::BatchSubmitRequest bad;                              // divergent batch
+    bad.add_jobs()->set_mask_id("RET-7");
+    bad.add_jobs()->set_mask_id("RET-9");
+    routingmeta::VectorSink s2;
+    routingmeta::ProjResult r2 = ProjectMeta(bad, s2);             // MUST NOT throw
+    assert(!r2.ok);                                                // hard fail
+    assert(r2.issues.size() == 1 && r2.issues[0].kind == routingmeta::Issue::Inconsistent);
+    assert(r2.issues[0].key == "x-mask-id");
+    assert(s2.Get("x-routing-error") == "inconsistent:x-mask-id"); // explicit, in-band
+    assert(s2.Get("x-mask-id").empty());                           // no header on divergence
+
+    sys3::v1::BatchSubmitRequest none;                             // zero jobs + required
+    routingmeta::VectorSink s3;
+    routingmeta::ProjResult r3 = ProjectMeta(none, s3);
+    assert(!r3.ok);
+    assert(r3.issues.size() == 1 && r3.issues[0].kind == routingmeta::Issue::MissingRequired);
+    assert(s3.Get("x-routing-error") == "missing:x-mask-id");
+    assert(s3.Get("x-mask-id").empty());
+  }
+
   // --- empty fields project as `Key=` (present-but-empty); digest round-trips (inv. 1) ---
   {
     sys1::v1::CalculateRequest req;

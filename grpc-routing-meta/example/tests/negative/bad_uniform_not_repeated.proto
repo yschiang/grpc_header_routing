@@ -1,0 +1,13 @@
+// NEGATIVE fixture — codegen MUST reject this (see build.sh "[neg ]").
+// uniform_across_repeated on a field with NO repeated ancestor: the flag promises
+// "duplicated identically across a repeated message"; on a plain scalar it is a
+// dead annotation that would silently mean nothing. Validate must fail loud.
+syntax = "proto3";
+package neg.v1;
+import "metadata_options.proto";
+
+message BadUniformNotRepeated {
+  string mask_id = 1 [(routing.project) = {
+    key: "x-mask-id", required: true, uniform_across_repeated: true
+  }];
+}

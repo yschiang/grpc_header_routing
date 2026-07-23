@@ -1,0 +1,50 @@
+// sys4 system — material/MES domain. 1 transaction, THREE exclusive batch shapes.
+//
+// One method serves three batch operations (id-change / lot-add / lot-change),
+// each carrying lot ids in its own message under different field names. The
+// operation messages are NOT annotated: three repeated pctx sources per message
+// is rejected at codegen (SPEC §9), and three different keys would defeat the
+// shared 7-field schema. Instead the PRODUCER normalizes new_mat_lot_id ->
+// contexts (LotID only) before Send; see docs/sys4-update-material.zh.md.
+syntax = "proto3";
+
+package sys4.v1;
+
+import "metadata_options.proto";   // (routing.project) for the scalar route keys
+import "process_context.proto";
+
+message IdChange {
+  string orig_mat_id    = 1;
+  string new_mat_id     = 2;
+  string new_mat_lot_id = 3;
+}
+
+message LotAdd {
+  repeated string mat_id_list = 1;
+  string new_mat_lot_id       = 2;
+}
+
+message LotChange {
+  string orig_mat_lot_id = 1;
+  string new_mat_lot_id  = 2;
+}
+
+message UpdateMaterialRequest {
+  string msg_hdr  = 1;   // [app] stand-in for the real system's header block
+  string ctrl_job = 2;   // [app]
+  string ope_no   = 3 [(routing.project)={key:"x-ope-no"}];   // [+meta] whole-request route key
+  string eqp_id   = 4 [(routing.project)={key:"x-eqp-id"}];   // [+meta] whole-request route key
+  string stage_id = 5;   // [app] NOT projected (decision: contexts carry LotID only)
+  string route_id = 6;   // [app]
+  string tech     = 7;   // [app] NOT projected
+  repeated IdChange  id_change  = 8;   // [app] exclusive source 1
+  repeated LotAdd    lot_add    = 9;   // [app] exclusive source 2
+  repeated LotChange lot_change = 10;  // [app] exclusive source 3
+
+  repeated common.v1.ProcessContext contexts = 11;  // [+meta] the ONLY pctx source
+}
+
+service Sys4Service {
+  // sys4.material.update
+  rpc UpdateMaterial(UpdateMaterialRequest) returns (common.v1.Ack);
+}

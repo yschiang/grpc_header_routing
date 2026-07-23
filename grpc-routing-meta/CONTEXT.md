@@ -27,15 +27,16 @@ never drift from the body. A `protoc` plugin generates the projection; one
 | **canonical form** | The deterministic string a context projects to: fields key-sorted, `&`-joined, values URL-encoded. The digest is computed over this. |
 | **overflow** | Projection too large for gRPC metadata → emit an explicit `x-process-context-overflow: true` instead of the context lines. |
 
-## Systems (3) and methods (16)
+## Systems (4) and methods (17)
 
 | System | proto / package | methods | Layer-3 shape |
 |---|---|---:|---|
 | **sys1** | `sys1.proto` / `sys1.v1` | 1 (`Calculate`) | process-context, **batch** (N contexts) |
 | **sys2** | `sys2.proto` / `sys2.v1` | 5 (`Verify`/`Download`/`Qualify`/`Upload`/`List`) | process-context, often **sparse** / `count=0` |
 | **sys3** | `sys3.proto` / `sys3.v1` | 10 (`Submit01..10`) | **domain scalar** `x-mask-id` (heterogeneous nested paths) + process-context |
+| **sys4** | `sys4.proto` / `sys4.v1` | 1 (`UpdateMaterial`) | process-context **LotID-only**, producer-normalized from 3 exclusive batch shapes (`sender/sys4_fill_contexts.h`) |
 
-All three import the shared `process_context.proto` (`common.v1.ProcessContext`),
+All four import the shared `process_context.proto` (`common.v1.ProcessContext`),
 so the schema cannot diverge.
 
 ## Header model — what the sender emits
@@ -65,7 +66,7 @@ so the schema cannot diverge.
 |---|---|
 | `example/proto/metadata_options.proto` | `(routing.project)` / `(routing.pctx)` field options |
 | `example/proto/process_context.proto` | shared `ProcessContext` (7 fields) + `Ack` |
-| `example/proto/{sys1,sys2,sys3}.proto` | the three systems |
+| `example/proto/{sys1,sys2,sys3,sys4}.proto` | the four systems |
 | `example/src/plugin/protoc-gen-meta.cc` | codegen: emits `ProjectMeta()` returning `ProjResult` (scalar walk + context loop → helper); required-missing → issue + `x-routing-error`, never throws |
 | `example/src/common/proj_result.h` | `ProjResult{ok, issues[], duration}` + `Issue{MissingRequired, Overflow}` — what a projection reports |
 | `example/src/common/metadata_sink.h` | `MetadataSink` (byte-tracking) + `VectorSink` / `GrpcSink` |

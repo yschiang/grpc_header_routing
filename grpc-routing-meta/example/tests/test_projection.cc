@@ -21,6 +21,8 @@
 #include "sys1.proj.h"
 #include "sys2.proj.h"
 #include "sys3.proj.h"
+#include "sys4.proj.h"
+#include "../sender/sys4_fill_contexts.h"
 
 // n contexts; recipe lets us test encoding ('/'), pad inflates each context to test
 // the byte-size overflow path independently of the count cap.
@@ -432,6 +434,68 @@ int main() {
     auto bad = VerifyDigest({"ChamberId=CH-A"}, "sha256:not-a-real-digest");
     assert(!bad.ok && !bad.error.empty());          // malformed digest -> clean reject
     assert(VerifyDigest({"ChamberId=CH-A"}, "").ok);   // absent digest -> OK (verify-if-present), no crash
+  }
+
+  // --- sys4: single-source expansion — each exclusive source maps new_mat_lot_id
+  //     -> LotID; the other 6 keys project as `Key=` (docs/sys4-update-material.zh.md §3) ---
+  {
+    sys4::v1::UpdateMaterialRequest req;
+    req.set_ope_no("OP123");
+    req.set_eqp_id("EQP-A");
+    req.add_lot_add()->set_new_mat_lot_id("LOT001");
+    req.add_lot_add()->set_new_mat_lot_id("LOT002");
+    assert(sys4demo::FillContexts(req));
+    assert(req.contexts_size() == 2);
+    routingmeta::VectorSink sink;
+    routingmeta::ProjResult r = ProjectMeta(req, sink);
+    assert(r.ok);
+    assert(sink.Get("x-ope-no") == "OP123");                        // scalar route keys ride along
+    assert(sink.Get("x-eqp-id") == "EQP-A");
+    assert(sink.Get("x-process-context-count") == "2");
+    // Pin the EXACT canonical line: LotID filled, all other keys present-but-empty.
+    assert(sink.Get("x-process-context") ==
+           "ChamberId=&LotID=LOT001&OperationNO=&PartID=&RecipeID=&StageID=&Tech=");
+  }
+  {
+    sys4::v1::UpdateMaterialRequest req;                            // source: id_change
+    auto* e = req.add_id_change();
+    e->set_orig_mat_id("M-OLD"); e->set_new_mat_id("M-NEW"); e->set_new_mat_lot_id("LOT-IC");
+    assert(sys4demo::FillContexts(req));
+    assert(req.contexts_size() == 1 && req.contexts(0).lot_id() == "LOT-IC");
+  }
+  {
+    sys4::v1::UpdateMaterialRequest req;                            // source: lot_change
+    auto* e = req.add_lot_change();
+    e->set_orig_mat_lot_id("LOT-OLD"); e->set_new_mat_lot_id("LOT-NEW");
+    assert(sys4demo::FillContexts(req));
+    assert(req.contexts_size() == 1 && req.contexts(0).lot_id() == "LOT-NEW");  // NEW id is canonical
+  }
+
+  // --- sys4: exclusive-source violation -> FillContexts refuses, contexts untouched
+  //     (fail loud, never a silent first-pick) ---
+  {
+    sys4::v1::UpdateMaterialRequest req;
+    req.add_lot_add()->set_new_mat_lot_id("LOT001");
+    req.add_lot_change()->set_new_mat_lot_id("LOT002");
+    assert(!sys4demo::FillContexts(req));
+    assert(req.contexts_size() == 0);
+  }
+
+  // --- sys4: 26 items -> overflow flag, no context lines, non-blocking (SPEC §5.4,
+  //     centralized policy — no sys4 exception) ---
+  {
+    sys4::v1::UpdateMaterialRequest req;
+    for (int i = 0; i < 26; ++i)
+      req.add_lot_add()->set_new_mat_lot_id("LOT" + std::to_string(i));
+    assert(sys4demo::FillContexts(req));
+    routingmeta::VectorSink sink;
+    routingmeta::ProjResult r = ProjectMeta(req, sink);
+    assert(r.ok);                                                   // overflow is non-blocking
+    assert(r.issues.size() == 1 && r.issues[0].kind == routingmeta::Issue::Overflow);
+    assert(sink.Get("x-process-context-count") == "26");
+    assert(sink.Get("x-process-context-overflow") == "true");
+    assert(sink.Count("x-process-context") == 0);
+    assert(sink.Get("x-process-context-digest").empty());
   }
 
   std::printf("ALL TESTS PASSED\n");

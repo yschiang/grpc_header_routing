@@ -39,9 +39,10 @@ fi
 CXXF="-std=c++17 -O0 -g --coverage -I $GEN -I src $PB_CFLAGS"
 rm -rf build/cov && mkdir -p build/cov
 
-# Shared instrumented generated objects, hit by all three drivers so gcda accumulates.
+# Shared instrumented generated objects, hit by all four drivers so gcda accumulates.
 GENSRCS="$GEN/metadata_options.pb.cc $GEN/process_context.pb.cc \
-$GEN/sys1.pb.cc $GEN/sys1.proj.cc $GEN/sys2.pb.cc $GEN/sys2.proj.cc $GEN/sys3.pb.cc $GEN/sys3.proj.cc"
+$GEN/sys1.pb.cc $GEN/sys1.proj.cc $GEN/sys2.pb.cc $GEN/sys2.proj.cc $GEN/sys3.pb.cc $GEN/sys3.proj.cc \
+$GEN/sys4.pb.cc $GEN/sys4.proj.cc"
 GENOBJS=""
 for s in $GENSRCS; do o="build/cov/$(basename "$s" .cc).o"; $CXX $CXXF -c "$s" -o "$o"; GENOBJS="$GENOBJS $o"; done
 

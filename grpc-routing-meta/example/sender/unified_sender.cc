@@ -27,6 +27,8 @@
 #include "sys1.proj.h"
 #include "sys2.proj.h"
 #include "sys3.proj.h"
+#include "sys4.proj.h"
+#include "sys4_fill_contexts.h"
 
 // [+meta] SAMPLE wiring — your sender team owns the real Send; the kit only
 // guarantees the two building blocks (FillCommon + ProjectMeta -> ProjResult).
@@ -169,6 +171,31 @@ int main() {
     dump("sys1  Calculate (60 contexts -> overflow)", sink, r);       // [demo]
   }
 
-  std::printf("All 16 transaction types (sys1 x1, sys2 x5, sys3 x10) route through the same Send<>().\n");
+  // --- sys4  sys4.material.update — ONE method, THREE exclusive batch shapes.
+  // The producer normalizes new_mat_lot_id -> contexts (LotID only) BEFORE Send;
+  // kit and Send<> are untouched. See docs/sys4-update-material.zh.md.
+  {
+    sys4::v1::UpdateMaterialRequest req;                 // [app] build the request
+    req.set_ope_no("OP123");                             // [app] -> x-ope-no (whole-request route key)
+    req.set_eqp_id("EQP-A");                             // [app] -> x-eqp-id
+    req.add_lot_add()->set_new_mat_lot_id("LOT001");     // [app] this call's shape: lot_add
+    req.add_lot_add()->set_new_mat_lot_id("LOT002");     // [app]
+    if (sys4demo::FillContexts(req)) {                   // [+meta] producer-side normalization
+      routingmeta::VectorSink sink;                      // [+meta]
+      routingmeta::ProjResult r = Send(req, Runtime{"CORR-LOT01-005", "F18", "ETCH01", "REQ-0005", "eap"}, sink);  // [+meta]
+      dump("sys4  UpdateMaterial (lot_add x2 -> LotID)", sink, r);  // [demo]
+    }
+  }
+
+  // --- sys4 exclusive-source violation: FillContexts refuses -> producer does NOT send ---
+  {
+    sys4::v1::UpdateMaterialRequest bad;                          // [demo]
+    bad.add_lot_add()->set_new_mat_lot_id("LOT001");              // [demo] two sources at once
+    bad.add_lot_change()->set_new_mat_lot_id("LOT002");           // [demo]
+    if (!sys4demo::FillContexts(bad))                             // [+meta] fail loud, no send
+      std::printf("=== sys4  UpdateMaterial REFUSED (exclusive-source violation: lot_add + lot_change) ===\n\n");
+  }
+
+  std::printf("All 17 transaction types (sys1 x1, sys2 x5, sys3 x10, sys4 x1) route through the same Send<>().\n");
   return 0;
 }

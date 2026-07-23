@@ -16,15 +16,16 @@ the projection; one **unified sender** serves every system.
   mapped to the BRIEF A–I acceptance criteria. **Reviewer / 驗收者從這裡進。**
 - **Runnable kit:** [`example/`](example/).
 
-## Three systems, one sender
+## Four systems, one sender
 
 | System | proto | methods | Projects |
 |---|---|---:|---|
 | **sys1** | `example/proto/sys1.proto` | 1 | process-context, batch (N contexts) |
 | **sys2** | `example/proto/sys2.proto` | 5 | the RMS: `x-recipe-id` scalar + per-lot contexts (shared **and** own-message pctx, incl. real-shape camelCase `rqst_RMS_GetRecipeSet`) |
 | **sys3** | `example/proto/sys3.proto` | 10 | domain scalar `x-mask-id` (nested paths) + process-context |
+| **sys4** | `example/proto/sys4.proto` | 1 (`UpdateMaterial`) | process-context LotID-only, producer-normalized from 3 exclusive batch shapes |
 
-All three import the shared `example/proto/process_context.proto`, so the 7-field
+All four import the shared `example/proto/process_context.proto`, so the 7-field
 schema can't diverge. The lib provides the two building blocks (`FillCommon` +
 generated `ProjectMeta` → `ProjResult`); the **Sender** composes them — its own one
 call, no per-system branching:

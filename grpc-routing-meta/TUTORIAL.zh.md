@@ -273,8 +273,8 @@ digest 對不上 → receiver 拒收，不會靜默吃下去。
 
 ```bash
 cp nrms.proto example/proto/
-# build.sh 裡一行：SYSTEMS=(sys1 sys2 sys3) → 加上 nrms
-# CMake 同理：CMakeLists.txt 的 foreach(name sys1 sys2 sys3) 加上 nrms
+# build.sh 裡一行：SYSTEMS=(sys1 sys2 sys3 sys4) → 加上 nrms
+# CMake 同理：CMakeLists.txt 的 foreach(name sys1 sys2 sys3 sys4) 加上 nrms
 ```
 
 ### 3.1 每個值先分類（tag 決策表)

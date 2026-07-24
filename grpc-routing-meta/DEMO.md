@@ -16,21 +16,21 @@ cd grpc-routing-meta/example
 ```
 == protoc libprotoc 3.20.3 ==
 [plug] protoc-gen-meta
-[neg ] codegen must reject malformed (routing.project)
-       ok (rejected): bad_dup_key.proto
-       ok (rejected): bad_message_project.proto
-       ok (rejected): bad_project_under_repeated.proto
-       ok (rejected): bad_repeated_scalar.proto
-[gen ] sys1.proto (cpp + meta)   sys2.proto   sys3.proto
+[neg ] codegen must reject malformed (routing.project) — for the right reason
+       ok (rejected for "duplicate (routing.project) key"): bad_dup_key.proto
+       ok (rejected for "more than one repeated process-context"): bad_multiple_ctx_fields.proto
+       ok (rejected for "must be a string scalar"): bad_project_wrong_type.proto
+       ... 9 fixtures total, each rejected for its own expected diagnostic
+[gen ] sys1.proto (cpp + meta)   sys2.proto   sys3.proto   sys4.proto
 [app ] unified_sender   receiver_verify
 [test] test_projection   [bench] bench_projection
 OK -> binaries in .../example/build/
 ```
 
 **Proves:** portable build, no hardcoded toolchain path (**A**). The `[neg ]`
-gate compiles 4 malformed `(routing.project)` fixtures and the build *fails* if
-any is accepted — a bad annotation never reaches the wire (**C**/**G**,
-fail-loud at codegen). The same steps run in CI on gcc/clang × protobuf
+gate compiles 9 malformed annotation fixtures and the build *fails* unless each
+is rejected **with its expected diagnostic** — a bad annotation never reaches
+the wire (**C**/**G**, fail-loud at codegen). The same steps run in CI on gcc/clang × protobuf
 3.20/3.21 (**B**, see `.github/workflows/ci.yml`).
 
 > No cmake locally? `./build.sh` is the direct-`protoc` equivalent; CI runs both.
@@ -39,8 +39,8 @@ fail-loud at codegen). The same steps run in CI on gcc/clang × protobuf
 
 ## 1. The sender — `./build/unified_sender`
 
-One `Send<>()` drives all 16 transaction types (sys1×1, sys2×5, sys3×10). Each
-block prints its metadata plus `(bytes, ok, duration)`.
+One `Send<>()` drives all 17 transaction types (sys1×1, sys2×5, sys3×10,
+sys4×1). Each block prints its metadata plus `(bytes, ok, duration)`.
 
 ### 1a. sys1 — batch process-context
 
@@ -105,6 +105,24 @@ reports `ok=false` + a `MissingRequired` issue + `x-routing-error`, and does
 stream; overflow is **non-blocking** (`ok` stays true) (inv. 8, **C**, **F** —
 the 7168/25/512 policy lives in one place).
 
+### 1e. sys4 — multi-source lot id, producer-normalized
+
+```
+=== sys4  UpdateMaterial (lot_add x2 -> LotID)   (898 bytes, ok=true) ===
+  x-ope-no:            OP123                        # (routing.project) scalars ride along
+  x-eqp-id:            EQP-A
+  x-process-context:   ChamberId=&LotID=LOT001&OperationNO=&PartID=&RecipeID=&StageID=&Tech=
+  ...LOT002 line, count=2, digest...
+
+=== sys4  UpdateMaterial REFUSED (exclusive-source violation: lot_add + lot_change) ===
+```
+
+**Proves:** one method, three exclusive batch shapes (`id_change`/`lot_add`/
+`lot_change`, lot ids under different field names); the **producer's**
+`FillContexts` — not the kit — normalizes `new_mat_lot_id` into LotID-only
+contexts, and refuses to send when two sources are filled at once: fail loud,
+never a silent first-pick (design: `docs/sys4-update-material.zh.md`).
+
 ---
 
 ## 2. The receiver — `./build/receiver_verify`
@@ -131,11 +149,13 @@ integrity-only, no key/signature; **D**/**I**).
 ALL TESTS PASSED
 ```
 
-12 assert blocks covering every invariant: url/sha256 primitives, key-sort,
+22 assert blocks covering every invariant: url/sha256 primitives, key-sort,
 digest round-trip **and tamper-detect**, count=0, overflow by count/bytes/line,
-sys3 scalar + missing-required, empty-field faithfulness, the 6 uniform common
-headers, the `FillCommon`+`ProjectMeta` compose, and an 8-thread re-entrancy
-check (**G**; full table in the test file header). Asserts compile in even under
+sys3 scalar + missing-required, sys4 multi-source normalization (exact
+canonical-line pin / exclusivity refusal / 26-item overflow), empty-field
+faithfulness, the 6 uniform common headers, the `FillCommon`+`ProjectMeta`
+compose, and an 8-thread re-entrancy check (**G**; full table in the test file
+header). Asserts compile in even under
 `-DNDEBUG` (`#undef NDEBUG`, line 1).
 
 ---
@@ -164,7 +184,7 @@ self-timed value the sender prints.
 | **B** CI matrix | step 0 steps run in `ci.yml` on gcc/clang × pb 3.20/3.21 |
 | **C** no silent failure | 0 (codegen gate) · 1c (`x-routing-error`) · 1d (overflow flag) |
 | **D** exact projection | 1a (key-sort/encode/digest) · 2 (round-trip) |
-| **E** one sender path | step 1 — one `Send<>()`, all 16 types, zero `if(system==…)` |
+| **E** one sender path | step 1 — one `Send<>()`, all 17 types, zero `if(system==…)` |
 | **F** policy centralized | 1d — 7168/25/512 in `process_context_emit.h` |
 | **G** testable invariants | step 3 (asserts) · step 0 (negative codegen) |
 | **H** perf observed | per-block `us` in step 1 · step 4 bench |
@@ -180,7 +200,9 @@ in `unified_sender.cc` shows.
 ## 5. Real wire — `grpc_demo/run.sh` (optional)
 
 Steps 1–4 use an in-memory `VectorSink`. This step sends the projected metadata
-over a **real HTTP/2 gRPC channel** to a live server, for all three systems.
+over a **real HTTP/2 gRPC channel** to a live server, for the three original
+systems (sys4 shares the same `Send<>()` path but is not wired into this live
+demo).
 Needs a local `grpc++` + `grpc_cpp_plugin` (set `GRPC_PREFIX`; default `/usr`,
 i.e. apt's `libgrpc++-dev` on Ubuntu — override for Homebrew/anaconda/etc.);
 run `./build.sh` first.
